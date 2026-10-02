@@ -277,7 +277,7 @@ Details:
 | `resolution-photos` | authority only | public | `image/jpeg` | 2 MB |
 
 - Object path: `{uid}/{uuid}.jpg`.
-- API routes verify that a submitted `image_path` starts with the caller's uid and that the object exists.
+- The API route checks that a submitted `image_path` starts with the caller's uid; `create_report` re-checks the prefix and that the object exists in storage.
 
 ### 10.3 Moderation
 - Public API responses never return image paths for `REJECTED` issues.

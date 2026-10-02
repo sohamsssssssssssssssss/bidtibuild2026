@@ -126,11 +126,13 @@ Shared rules for every function below:
 - **Exception:** `is_authority` is also granted to `anon` and `authenticated`, because RLS policies evaluate it as the querying role. It only answers a yes/no question.
 - Each takes `p_actor_id` (already verified by the API route), re-checks authorisation, and writes its `issue_events` rows in the same transaction.
 - Status changes happen **only** here.
+- Errors: `raise exception using errcode = 'PT<http>', message = '<ERROR_CODES key>', detail = '<human-readable reason>'` — `PT400 VALIDATION_FAILED`, `PT403 FORBIDDEN`, `PT404 NOT_FOUND`, `PT409 CONFLICT` / `INVALID_TRANSITION`, `PT429 RATE_LIMITED`. PostgREST turns SQLSTATE `PTxyz` into HTTP xyz; supabase-js surfaces `{ code: 'PT429', message: 'RATE_LIMITED', details: '...' }`. A route maps it with `fail(message, <friendly message>)` when `code` matches `/^PT\d{3}$/` and `message` is an `ERROR_CODES` key; anything else is `INTERNAL` (logged).
 
 | Function | Caller | Does |
 |---|---|---|
 | `is_authority(p_user_id) → boolean` | functions, RLS | Checks for a `users` row with role `AUTHORITY` |
-| `create_report(p_actor_id, p_ip_hash, p_category, p_citizen_severity, p_description, p_image_path, p_lat, p_lng, p_config)` | citizen route | Rate limits (`02` §9); inserts issue + first report + `CREATED`; returns issue_id, report_id |
+| `check_report_rate_limit(p_actor_id, p_ip_hash, p_config) → void` | `create_report`, `add_supporting_report` | `02` §9: counts `reports` in the rolling `window_hours` per user and per IP hash (null hash skips the IP limit); raises `PT429 RATE_LIMITED` (detail `per-user limit` / `per-IP limit`) |
+| `create_report(p_actor_id, p_ip_hash, p_category, p_citizen_severity, p_description, p_image_path, p_lat, p_lng, p_config) → jsonb` | citizen route | `p_image_path` must start with `{p_actor_id}/` (else `FORBIDDEN`) and exist in `report-photos` (else `VALIDATION_FAILED`); description trimmed, non-empty; rate limits (`02` §9); inserts issue + first report + `CREATED`; returns `{issue_id, report_id}` |
 | `add_supporting_report(p_actor_id, p_ip_hash, p_issue_id, …same fields…)` | citizen route | Issue must be open; rate limits; inserts report + `SUPPORT_ADDED` |
 | `duplicate_candidates(p_lat, p_lng, p_category, p_config)` | citizen route | Read only; `02` §3.3–3.5 |
 | `set_priority(p_actor_id, p_issue_id, p_final_priority, p_authority_severity)` | authority route | `PRIORITY_SET` / `SEVERITY_CONFIRMED` |
