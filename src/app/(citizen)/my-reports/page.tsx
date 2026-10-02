@@ -67,7 +67,7 @@ export default function MyReportsPage() {
         <section className="state-panel" role="status">
           <h2>No reports yet</h2>
           <p>Issues you report will appear here.</p>
-          <Link href="/">Explore the issue map</Link>
+          <Link href="/report">Report an issue</Link>
         </section>
       ) : (
         <div className="report-list">
@@ -97,6 +97,11 @@ export default function MyReportsPage() {
                 >
                   {STATUS_META[report.issue.status].label}
                 </span>
+                <p>
+                  <Link href={`/issues/${report.issue.id}`}>
+                    View issue detail
+                  </Link>
+                </p>
               </div>
             </article>
           ))}

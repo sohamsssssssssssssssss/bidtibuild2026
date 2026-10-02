@@ -298,6 +298,10 @@ export function CityMap() {
           } else text(card, "p", "Photo unavailable", "photo-fallback");
           const description = issue.photos[0]?.description;
           if (description) text(card, "p", description);
+          const detail = document.createElement("a");
+          detail.href = `/issues/${encodeURIComponent(issue.id)}`;
+          detail.textContent = "View issue detail";
+          card.append(detail);
         } catch (cause) {
           card.replaceChildren();
           text(
