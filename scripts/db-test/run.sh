@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Rebuilds a throwaway database from scratch and runs the SQL tests:
 #   shim (plain Postgres only) -> supabase/migrations/*.sql -> supabase/seed.sql -> supabase/tests/*.sql
+#   -> node checks (check-transitions.ts, check-city-pulse-concurrency.ts)
 #
 # Usage: npm run db:test            # against local Postgres + PostGIS
 #        DB_ADMIN_URL=... npm run db:test
@@ -48,6 +49,14 @@ if node "$ROOT/scripts/db-test/check-transitions.ts" "$DB_URL" > /tmp/db-test-ou
   echo "PASS check-transitions.ts"
 else
   echo "FAIL check-transitions.ts"; sed 's/^/    /' /tmp/db-test-out.$$; status=1
+fi
+
+# 02 §6.8: concurrent regenerate_city_pulse runs queue up (one active set). Leaves hotspot rows
+# behind, so it runs after the SQL tests.
+if node "$ROOT/scripts/db-test/check-city-pulse-concurrency.ts" "$DB_URL" > /tmp/db-test-out.$$ 2>&1; then
+  echo "PASS check-city-pulse-concurrency.ts"
+else
+  echo "FAIL check-city-pulse-concurrency.ts"; sed 's/^/    /' /tmp/db-test-out.$$; status=1
 fi
 rm -f /tmp/db-test-out.$$
 exit $status
