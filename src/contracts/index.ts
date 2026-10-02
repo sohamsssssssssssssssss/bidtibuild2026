@@ -10,4 +10,5 @@ export * from "./issues";
 export * from "./authority";
 export * from "./hotspots";
 export * from "./departments";
+export * from "./stats";
 export * from "./routes";

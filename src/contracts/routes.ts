@@ -14,6 +14,7 @@ import * as D from "./departments";
 import * as H from "./hotspots";
 import * as I from "./issues";
 import * as R from "./reports";
+import * as S from "./stats";
 
 export type RouteAccess = "public" | "citizen" | "authority";
 
@@ -163,6 +164,15 @@ export const API_ROUTES = {
     query: null,
     body: null,
     response: H.regenerateHotspotsResponseSchema,
+  },
+  resolutionStats: {
+    method: "GET",
+    path: "/api/stats/resolution",
+    access: "public",
+    params: null,
+    query: null,
+    body: null,
+    response: S.resolutionStatsResponseSchema,
   },
 } as const satisfies Record<string, RouteContract>;
 
