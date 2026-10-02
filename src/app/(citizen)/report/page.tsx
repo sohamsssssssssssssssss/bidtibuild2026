@@ -3,7 +3,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import {
   CATEGORIES,
   CATEGORY_META,
@@ -15,20 +15,42 @@ import {
   type Category,
   type Level,
 } from "@/config/civic";
-import { apiEnvelopeSchema } from "@/contracts/envelope";
+import { TESTIDS } from "@/config/testids";
 import {
   createReportBodySchema,
-  createReportResponseSchema,
+  type CreateReportBody,
+  type DuplicateCandidate,
+  type ReportWriteResult,
 } from "@/contracts/reports";
 import { descriptionSchema } from "@/contracts/primitives";
 import {
   createSupabaseBrowserClient,
   ensureCitizenSession,
 } from "@/lib/supabase/browser";
+import { DuplicateCandidates } from "@/components/report/DuplicateCandidates";
+import {
+  FriendlyError,
+  NETWORK_MESSAGE,
+  createReport,
+  fetchDuplicateCandidates,
+  successUrl,
+  supportIssue,
+} from "@/components/report/reportApi";
+import "@/components/report/report.css";
 import { LocationPicker, type Pin } from "./LocationPicker";
 import { prepareReportPhoto } from "./photo";
 
-const envelope = apiEnvelopeSchema(createReportResponseSchema);
+/** A photo already in storage, reused across choices so it is never uploaded twice. */
+type UploadedPhoto = { file: File; path: string; userId: string };
+
+function friendly(cause: unknown, fallback: string): string {
+  if (cause instanceof FriendlyError) return cause.message;
+  if (cause instanceof TypeError && /fetch|network/i.test(cause.message))
+    return NETWORK_MESSAGE;
+  if (cause instanceof Error && cause.message && !/^\[|\{/.test(cause.message))
+    return cause.message;
+  return fallback;
+}
 
 export default function ReportPage() {
   const router = useRouter();
@@ -41,80 +63,159 @@ export default function ReportPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [step, setStep] = useState("");
+  const [candidates, setCandidates] = useState<DuplicateCandidate[] | null>(
+    null,
+  );
+  const [pendingBody, setPendingBody] = useState<CreateReportBody | null>(null);
+  const uploadedRef = useRef<UploadedPhoto | null>(null);
+  const locatingRef = useRef<Promise<Pin | null> | null>(null);
+  const navigatingRef = useRef(false);
 
   useEffect(() => {
     if (preview) return () => URL.revokeObjectURL(preview);
   }, [preview]);
 
+  async function ensurePhotoUploaded(file: File): Promise<string> {
+    setStep("Signing in…");
+    await ensureCitizenSession();
+    const supabase = createSupabaseBrowserClient();
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser();
+    if (userError || !user)
+      throw new FriendlyError(
+        "We couldn't start your session. Please try again.",
+      );
+    const cached = uploadedRef.current;
+    if (cached && cached.file === file && cached.userId === user.id)
+      return cached.path;
+
+    setStep("Preparing photo…");
+    const upload = await prepareReportPhoto(file);
+    const path = `${user.id.toLowerCase()}/${crypto.randomUUID().toLowerCase()}${PHOTO_CONFIG.file_extension}`;
+    setStep("Uploading photo…");
+    let uploadError: { message: string } | null = null;
+    try {
+      ({ error: uploadError } = await supabase.storage
+        .from(STORAGE_BUCKETS.reportPhotos)
+        .upload(path, upload, {
+          contentType: PHOTO_CONFIG.output_mime_type,
+          upsert: false,
+        }));
+    } catch {
+      throw new FriendlyError(
+        "Photo upload failed — check your connection and try again.",
+      );
+    }
+    if (uploadError)
+      throw new FriendlyError(
+        "Photo upload failed. Your details are kept — please try again.",
+      );
+    uploadedRef.current = { file, path, userId: user.id };
+    return path;
+  }
+
+  function finish(result: ReportWriteResult) {
+    navigatingRef.current = true;
+    setStep("Opening confirmation…");
+    router.push(successUrl(result));
+  }
+
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (busy) return;
     setError("");
-    if (!photo || !pin) {
-      setError("Add a photo and place a pin before submitting.");
+    const checkedDescription = descriptionSchema.safeParse(description);
+    if (!checkedDescription.success) {
+      setError(
+        `Add a description (up to ${TEXT_LIMITS.description.max} characters) before submitting.`,
+      );
+      return;
+    }
+    if (!photo) {
+      setError("Add a photo before submitting.");
       return;
     }
     setBusy(true);
     try {
-      const checkedDescription = descriptionSchema.safeParse(description);
-      if (!checkedDescription.success)
-        throw new Error("Add a description before submitting.");
-      setStep("Preparing photo…");
-      const upload = await prepareReportPhoto(photo);
-      setStep("Signing in…");
-      await ensureCitizenSession();
-      const supabase = createSupabaseBrowserClient();
-      const {
-        data: { user },
-        error: userError,
-      } = await supabase.auth.getUser();
-      if (userError || !user)
-        throw (
-          userError ?? new Error("Citizen session unavailable. Please retry.")
+      let location = pin;
+      if (!location && locatingRef.current) {
+        setStep("Waiting for your location…");
+        location = await locatingRef.current;
+      }
+      if (!location) {
+        setError(
+          "Place a pin on the map (or use your location) before submitting.",
         );
-      const imagePath = `${user.id.toLowerCase()}/${crypto.randomUUID().toLowerCase()}${PHOTO_CONFIG.file_extension}`;
-      const body = createReportBodySchema.parse({
+        return;
+      }
+      const imagePath = await ensurePhotoUploaded(photo);
+      const parsed = createReportBodySchema.safeParse({
         category,
         description: checkedDescription.data,
         citizen_severity: severity || null,
         image_path: imagePath,
-        ...pin,
+        lat: location.lat,
+        lng: location.lng,
       });
-      setStep("Uploading photo…");
-      const { error: uploadError } = await supabase.storage
-        .from(STORAGE_BUCKETS.reportPhotos)
-        .upload(imagePath, upload, {
-          contentType: PHOTO_CONFIG.output_mime_type,
-          upsert: false,
-        });
-      if (uploadError)
-        throw new Error(`Photo upload failed: ${uploadError.message}`);
+      if (!parsed.success) {
+        setError(
+          "Some of the report details aren't valid. Please check them and try again.",
+        );
+        return;
+      }
+      setStep("Checking for similar reports nearby…");
+      const found = await fetchDuplicateCandidates({
+        lat: parsed.data.lat,
+        lng: parsed.data.lng,
+        category: parsed.data.category,
+      });
+      if (found.length > 0) {
+        setPendingBody(parsed.data);
+        setCandidates(found);
+        window.scrollTo({ top: 0, behavior: "smooth" });
+        return;
+      }
       setStep("Submitting report…");
-      const response = await fetch("/api/reports", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-      const result = envelope.parse(await response.json());
-      if (
-        response.status !== 201 ||
-        result.error ||
-        !result.data.created_new_issue
-      )
-        throw new Error(result.error?.message ?? "Could not submit report.");
-      router.push(
-        `/report/success?issue=${encodeURIComponent(result.data.issue_id)}&report=${encodeURIComponent(result.data.report_id)}`,
-      );
+      finish(await createReport(parsed.data));
     } catch (cause) {
-      setError(
-        cause instanceof Error
-          ? cause.message
-          : "Could not submit report. Please retry.",
-      );
+      setError(friendly(cause, "Could not submit report. Please try again."));
     } finally {
-      setBusy(false);
-      setStep("");
+      if (!navigatingRef.current) {
+        setBusy(false);
+        setStep("");
+      }
     }
   }
+
+  async function choose(
+    action: () => Promise<ReportWriteResult>,
+    label: string,
+  ) {
+    if (busy) return;
+    setError("");
+    setBusy(true);
+    setStep(label);
+    try {
+      finish(await action());
+    } catch (cause) {
+      setError(friendly(cause, "Could not submit report. Please try again."));
+    } finally {
+      if (!navigatingRef.current) {
+        setBusy(false);
+        setStep("");
+      }
+    }
+  }
+
+  function backToEdit() {
+    setCandidates(null);
+    setPendingBody(null);
+    setError("");
+  }
+
+  const showingCandidates = candidates !== null && pendingBody !== null;
 
   return (
     <div className="page-wrap report-page">
@@ -123,13 +224,52 @@ export default function ReportPage() {
         <h1>Report an issue.</h1>
         <p>Add a photo and pin the exact spot so the issue can be found.</p>
       </div>
-      <form className="report-form" onSubmit={(event) => void submit(event)}>
+      {showingCandidates && error && (
+        <p
+          className="form-error"
+          role="alert"
+          data-testid={TESTIDS.reportError}
+        >
+          {error}
+        </p>
+      )}
+      {showingCandidates && busy && (
+        <p className="report-status" role="status">
+          {step}
+        </p>
+      )}
+      {showingCandidates && (
+        <DuplicateCandidates
+          candidates={candidates}
+          busy={busy}
+          onSameIssue={(candidate) =>
+            void choose(
+              () => supportIssue(candidate.id, pendingBody),
+              "Adding your report to this issue…",
+            )
+          }
+          onCreateNew={() =>
+            void choose(
+              () => createReport(pendingBody),
+              "Creating a new issue…",
+            )
+          }
+          onBack={backToEdit}
+        />
+      )}
+      <form
+        className="report-form"
+        hidden={showingCandidates}
+        onSubmit={(event) => void submit(event)}
+        noValidate
+      >
         <div className="report-fields">
           <label>
             <span>Category *</span>
             <select
               value={category}
               onChange={(event) => setCategory(event.target.value as Category)}
+              data-testid={TESTIDS.reportCategory}
               required
             >
               {CATEGORIES.map((value) => (
@@ -147,6 +287,7 @@ export default function ReportPage() {
               maxLength={TEXT_LIMITS.description.max}
               rows={5}
               placeholder="What happened? Add details that help locate it."
+              data-testid={TESTIDS.reportDescription}
               required
             />
           </label>
@@ -155,6 +296,7 @@ export default function ReportPage() {
             <input
               type="file"
               accept={PHOTO_CONFIG.accept}
+              data-testid={TESTIDS.reportPhotoInput}
               onChange={(event) => {
                 const selected = event.target.files?.[0] ?? null;
                 setPhoto(selected);
@@ -172,6 +314,7 @@ export default function ReportPage() {
             Severity (optional)
             <select
               value={severity}
+              data-testid={TESTIDS.reportSeverity}
               onChange={(event) =>
                 setSeverity(event.target.value as Level | "")
               }
@@ -189,16 +332,33 @@ export default function ReportPage() {
           <h2>
             Pin the location <span aria-hidden="true">*</span>
           </h2>
-          <LocationPicker pin={pin} onChange={setPin} />
+          <LocationPicker
+            pin={pin}
+            onChange={(next) => {
+              locatingRef.current = null;
+              setPin(next);
+            }}
+            onLocating={(pending) => {
+              locatingRef.current = pending;
+            }}
+          />
         </div>
         <div className="report-actions">
-          {error && (
-            <p className="form-error" role="alert">
+          {!showingCandidates && error && (
+            <p
+              className="form-error"
+              role="alert"
+              data-testid={TESTIDS.reportError}
+            >
               {error}
             </p>
           )}
-          {busy && <p role="status">{step}</p>}
-          <button type="submit" disabled={busy}>
+          {!showingCandidates && busy && <p role="status">{step}</p>}
+          <button
+            type="submit"
+            disabled={busy}
+            data-testid={TESTIDS.reportSubmit}
+          >
             {busy ? "Submitting…" : "Submit report"}
           </button>
           <Link href="/">Back to issue map</Link>

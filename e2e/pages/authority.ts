@@ -53,7 +53,7 @@ export class AuthorityApp {
   }
 
   async openCriticalHotspot(): Promise<void> {
-    await this.page.goto(ROUTES.authorityHome);
+    await this.page.goto(ROUTES.authorityCityPulse);
     await this.page.getByTestId(TESTIDS.hotspot).filter({ hasText: /CRITICAL/i }).first().click();
     await expect(this.page.getByTestId(TESTIDS.hotspotDetail)).toBeVisible();
   }

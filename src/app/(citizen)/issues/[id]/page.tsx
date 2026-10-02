@@ -1,9 +1,9 @@
 "use client";
-/* eslint-disable @next/next/no-img-element -- Photos use the same-origin API photo route. */
 
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
+import { TESTIDS } from "@/config/testids";
 import { CATEGORY_META, STATUS_META } from "@/config/civic";
 import { apiEnvelopeSchema } from "@/contracts/envelope";
 import {
@@ -11,6 +11,7 @@ import {
   type IssueDetail,
 } from "@/contracts/issues";
 import { uuidSchema } from "@/contracts/primitives";
+import { Photo } from "@/components/Photo";
 
 const envelope = apiEnvelopeSchema(issueDetailResponseSchema);
 
@@ -73,9 +74,13 @@ export default function IssuePage() {
             <p>
               <span
                 className="status-pill"
+                data-testid={TESTIDS.issueStatus}
                 style={{ borderColor: STATUS_META[issue.status].color }}
               >
                 {STATUS_META[issue.status].label}
+                <span className="visually-hidden" aria-hidden="true">
+                  {issue.status}
+                </span>
               </span>{" "}
               {issue.is_seed && <span className="demo-tag">Demo data</span>}
             </p>
@@ -90,14 +95,10 @@ export default function IssuePage() {
               </p>
               {issue.photos.map((photo) => (
                 <article className="detail-photo" key={photo.id}>
-                  {!issue.is_seed && photo.image_url ? (
-                    <img
-                      src={photo.image_url}
-                      alt={`Reported ${CATEGORY_META[photo.category].label}`}
-                    />
-                  ) : (
-                    <p className="photo-fallback">Photo unavailable</p>
-                  )}
+                  <Photo
+                    src={issue.is_seed ? null : photo.image_url}
+                    alt={`Reported ${CATEGORY_META[photo.category].label}`}
+                  />
                   <p>{photo.description}</p>
                   <small>{new Date(photo.created_at).toLocaleString()}</small>
                 </article>
@@ -130,16 +131,17 @@ export default function IssuePage() {
                 )}
               </section>
               {issue.resolution_evidence.length > 0 && (
-                <section className="state-panel">
+                <section
+                  className="state-panel"
+                  data-testid={TESTIDS.resolutionEvidence}
+                >
                   <h2>Resolution evidence</h2>
                   {issue.resolution_evidence.map((evidence) => (
                     <article className="detail-photo" key={evidence.id}>
-                      {evidence.image_url && (
-                        <img
-                          src={evidence.image_url}
-                          alt="Evidence of issue resolution"
-                        />
-                      )}
+                      <Photo
+                        src={evidence.image_url}
+                        alt="Evidence of issue resolution"
+                      />
                       {evidence.note && <p>{evidence.note}</p>}
                     </article>
                   ))}

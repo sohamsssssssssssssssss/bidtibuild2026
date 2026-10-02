@@ -23,6 +23,7 @@ try {
  */
 export const ROUTES = {
   home: "/",
+  authorityCityPulse: "/authority/city-pulse",
   myReports: "/my-reports",
   authorityLogin: "/authority/login",
   authorityHome: "/authority",

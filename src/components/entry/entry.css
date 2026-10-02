@@ -1,0 +1,140 @@
+.entry-page {
+  display: grid;
+  gap: 32px;
+}
+.entry-hero {
+  max-width: 820px;
+}
+.entry-hero h1 {
+  margin: 6px 0 10px;
+  font-size: clamp(30px, 4vw, 48px);
+  line-height: 1.08;
+}
+.entry-hero p {
+  color: #526774;
+  font-size: 18px;
+}
+.entry-doors {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px;
+}
+.entry-door {
+  display: grid;
+  gap: 10px;
+  padding: 28px;
+  border: 1px solid #d8e1e3;
+  border-top: 4px solid #123b56;
+  border-radius: 13px;
+  color: #142d3b;
+  background: #fff;
+  text-decoration: none;
+  transition:
+    box-shadow 0.15s,
+    transform 0.15s;
+}
+.entry-door:hover,
+.entry-door:focus-visible {
+  box-shadow: 0 10px 30px rgb(18 59 86 / 12%);
+  transform: translateY(-2px);
+}
+.entry-door-admin {
+  border-top-color: #203b38;
+}
+.entry-door strong {
+  font-size: 24px;
+}
+.entry-door span {
+  color: #526774;
+}
+.entry-door .entry-door-kicker {
+  color: #32725f;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.entry-door .entry-door-cta {
+  margin-top: 6px;
+  color: #123b56;
+  font-weight: 800;
+}
+.entry-steps {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.entry-steps li {
+  display: grid;
+  gap: 4px;
+  padding: 16px;
+  border: 1px solid #d8e1e3;
+  border-radius: 13px;
+  background: #fff;
+}
+.entry-steps li span:last-child {
+  color: #526774;
+  font-size: 14px;
+}
+.entry-step-number {
+  display: inline-grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  color: #fff;
+  background: #123b56;
+  font-size: 13px;
+  font-weight: 800;
+}
+.entry-login {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 420px);
+  gap: 48px;
+  align-items: center;
+  min-height: 46vh;
+}
+.entry-actions {
+  display: grid;
+  gap: 10px;
+  margin-top: 20px;
+}
+.entry-actions button {
+  padding: 11px;
+  border: 0;
+  border-radius: 7px;
+  color: #fff;
+  background: #123b56;
+  font-weight: 700;
+  cursor: pointer;
+}
+.entry-actions .entry-secondary {
+  border: 1px solid #a9bdc2;
+  color: #123b56;
+  background: #fff;
+}
+.entry-actions button:disabled {
+  opacity: 0.6;
+}
+@media (max-width: 900px) {
+  .entry-doors,
+  .entry-login {
+    grid-template-columns: 1fr;
+    gap: 20px;
+  }
+  .entry-steps {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 480px) {
+  .entry-steps {
+    grid-template-columns: 1fr;
+  }
+}
+.entry-staff a {
+  color: #123b56;
+  font-weight: 800;
+}

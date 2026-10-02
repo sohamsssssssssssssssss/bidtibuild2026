@@ -1,5 +1,6 @@
 "use client";
 
+import { TESTIDS } from "@/config/testids";
 import { useEffect, useRef, useState } from "react";
 import type { FeatureCollection, Point } from "geojson";
 import type {
@@ -77,7 +78,11 @@ function text(
   return element;
 }
 
-export function CityMap() {
+export function CityMap({
+  detailBasePath = "/issues",
+}: {
+  detailBasePath?: string;
+}) {
   const container = useRef<HTMLDivElement>(null);
   const [state, setState] = useState<"loading" | "ready" | "empty" | "error">(
     "loading",
@@ -85,6 +90,7 @@ export function CityMap() {
   const [message, setMessage] = useState("");
   const [count, setCount] = useState(0);
   const [seedCount, setSeedCount] = useState(0);
+  const [attempt, setAttempt] = useState(0);
   const retry = useRef<() => void>(() => {});
 
   useEffect(() => {
@@ -94,6 +100,21 @@ export function CityMap() {
     let controller: AbortController | undefined;
     let lastBbox = "";
     let hasLoaded = false;
+    // Until the map's style has loaded, Retry remounts the whole map.
+    retry.current = () => {
+      setState("loading");
+      setMessage("");
+      setAttempt((value) => value + 1);
+    };
+    // Never leave the map on "Loading issues…": if the style/tiles never finish
+    // loading (network, aborted bundle, interrupted dev reload), show Retry.
+    const loadTimeout = window.setTimeout(() => {
+      if (disposed || map?.getSource("issues")) return;
+      setMessage(
+        "The map did not finish loading. Check your connection and retry.",
+      );
+      setState("error");
+    }, 20_000);
     let popup: import("maplibre-gl").Popup | undefined;
     let resizeObserver: ResizeObserver | undefined;
 
@@ -162,10 +183,16 @@ export function CityMap() {
         }
       }
       retry.current = () => {
-        void load(true);
+        if (map?.getSource("issues")) void load(true);
+        else {
+          setState("loading");
+          setMessage("");
+          setAttempt((value) => value + 1);
+        }
       };
 
       map.on("load", () => {
+        window.clearTimeout(loadTimeout);
         if (!map) return;
         map.addSource("issues", {
           type: "geojson",
@@ -301,7 +328,7 @@ export function CityMap() {
           const description = issue.photos[0]?.description;
           if (description) text(card, "p", description);
           const detail = document.createElement("a");
-          detail.href = `/issues/${encodeURIComponent(issue.id)}`;
+          detail.href = `${detailBasePath}/${encodeURIComponent(issue.id)}`;
           detail.textContent = "View issue detail";
           card.append(detail);
         } catch (cause) {
@@ -331,12 +358,13 @@ export function CityMap() {
     });
     return () => {
       disposed = true;
+      window.clearTimeout(loadTimeout);
       controller?.abort();
       popup?.remove();
       resizeObserver?.disconnect();
       map?.remove();
     };
-  }, []);
+  }, [detailBasePath, attempt]);
 
   return (
     <div className="map-column">
@@ -349,11 +377,14 @@ export function CityMap() {
               : `${count} ${count === 1 ? "issue" : "issues"} in view`}
         </span>
         {seedCount > 0 && (
-          <span className="demo-tag">{seedCount} demo data</span>
+          <span className="demo-tag" data-testid={TESTIDS.demoDataBadge}>
+            {seedCount} demo data
+          </span>
         )}
       </div>
       <div
         className="map-canvas"
+        data-testid={TESTIDS.map}
         ref={container}
         aria-label="Interactive map of civic issues"
       />

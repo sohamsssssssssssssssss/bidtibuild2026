@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { AuthorityNavigation } from "@/components/auth/AuthorityNavigation";
 import "./authority.css";
 
 export const dynamic = "force-dynamic";
@@ -15,10 +16,7 @@ export default function AuthorityLayout({
             CivicPulse <strong>AI</strong>
           </span>
         </Link>
-        <nav aria-label="Authority navigation">
-          <Link href="/authority">Triage queue</Link>
-          <Link href="/">Citizen map</Link>
-        </nav>
+        <AuthorityNavigation />
       </header>
       <main>{children}</main>
       <footer className="site-footer">

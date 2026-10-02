@@ -13,6 +13,10 @@ import {
 } from "../../contracts/authority";
 import { departmentsResponseSchema } from "../../contracts/departments";
 import {
+  hotspotsResponseSchema,
+  regenerateHotspotsResponseSchema,
+} from "../../contracts/hotspots";
+import {
   assignIssueResponseSchema,
   issueDetailResponseSchema,
   mergeIssueResponseSchema,
@@ -110,6 +114,13 @@ export const authorityApi = {
   queue: (q?: AuthorityQueueQuery) =>
     call(queueUrl(q), authorityQueueResponseSchema),
   departments: () => call("/api/departments", departmentsResponseSchema),
+  /** GET /api/hotspots — the active City Pulse hotspots (02 §6). */
+  hotspots: () => call("/api/hotspots", hotspotsResponseSchema),
+  /** POST /api/hotspots/regenerate — authority only; returns the new active set. */
+  regenerateHotspots: () =>
+    call("/api/hotspots/regenerate", regenerateHotspotsResponseSchema, {
+      method: "POST",
+    }),
   issue: (issueId: string) =>
     call(`/api/issues/${id(issueId)}`, issueDetailResponseSchema),
   duplicateCandidates: (lat: number, lng: number, category: Category) =>

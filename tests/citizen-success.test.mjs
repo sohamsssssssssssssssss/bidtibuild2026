@@ -23,6 +23,8 @@ const imports = {
   "next/link": ({ href, children }) =>
     React.createElement("a", { href }, children),
   "@/contracts/primitives": { uuidSchema: z.guid() },
+  "@/config/testids": { TESTIDS: { submissionSuccess: "submission-success" } },
+  "@/components/report/report.css": {},
 };
 new Function("require", "module", "exports", compiled)(
   (name) => imports[name],
@@ -41,6 +43,7 @@ test("report success links to the saved issue and My Reports", async () => {
   );
   assert.match(html, new RegExp(reportId));
   assert.match(html, /href="\/my-reports"/);
+  assert.match(html, /data-testid="submission-success"/);
   assert.match(html, new RegExp(`href="/issues/${id}"`));
 });
 

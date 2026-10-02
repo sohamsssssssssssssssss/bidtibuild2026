@@ -19,6 +19,7 @@ import {
 } from "@/contracts/authority";
 import type { Department } from "@/contracts/departments";
 import { useAuthorityUser } from "@/components/auth/AuthoritySession";
+import { CityMap } from "@/components/map/CityMap";
 import {
   CategoryChip,
   DemoTag,
@@ -58,7 +59,7 @@ function needsDecision(row: AuthorityQueueRow): boolean {
 }
 
 export function Queue() {
-  const { email, signOut } = useAuthorityUser();
+  const { email } = useAuthorityUser();
   const [statuses, setStatuses] = useState<OpenStatus[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [department, setDepartment] = useState<string>(ALL_DEPARTMENTS);
@@ -67,7 +68,6 @@ export function Queue() {
   const [error, setError] = useState<LoadError | null>(null);
   const [attempt, setAttempt] = useState(0);
   const [loadedAt, setLoadedAt] = useState(0);
-  const [signingOut, setSigningOut] = useState(false);
 
   const filtered =
     statuses.length > 0 ||
@@ -169,17 +169,6 @@ export function Queue() {
             >
               Refresh
             </button>
-            <button
-              type="button"
-              className="ap-button ap-button-secondary"
-              disabled={signingOut}
-              onClick={() => {
-                setSigningOut(true);
-                void signOut().finally(() => setSigningOut(false));
-              }}
-            >
-              {signingOut ? "Signing out…" : "Sign out"}
-            </button>
           </div>
         </div>
       </header>
@@ -203,6 +192,11 @@ export function Queue() {
           value={summary?.overdue}
           tone={summary?.overdue ? "alert" : undefined}
         />
+      </section>
+
+      <section className="aq-map" aria-label="City issue map">
+        <h2>City context</h2>
+        <CityMap detailBasePath="/authority/issues" />
       </section>
 
       <section className="aq-filters ap-card" aria-label="Filters">

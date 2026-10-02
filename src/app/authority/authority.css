@@ -152,3 +152,36 @@
   clip-path: inset(50%);
   white-space: nowrap;
 }
+
+.authority-shell .topbar nav button {
+  padding: 8px 2px;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+}
+.city-pulse-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 360px), 1fr));
+  gap: 16px;
+}
+.city-pulse-members {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 16px;
+  font-size: 13px;
+  font-weight: 700;
+}
+.aq-map {
+  margin: 18px 0;
+}
+.aq-map h2 {
+  font-size: 16px;
+}
+.aq-map .map-column {
+  min-height: 380px;
+}
+.aq-map .map-canvas {
+  height: 340px;
+}

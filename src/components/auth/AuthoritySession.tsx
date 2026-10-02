@@ -176,10 +176,10 @@ export function AuthorityLoginForm() {
   return (
     <section className="login-card">
       <p className="eyebrow">Restricted access</p>
-      <h2>Authority sign in</h2>
+      <h2>Authority Sign In</h2>
       <p>
-        For municipal staff. Citizen reports become your triage queue after sign
-        in.
+        For authorized municipal staff. Citizen sessions cannot open the
+        authority workspace.
       </p>
       <form onSubmit={login}>
         <label>
