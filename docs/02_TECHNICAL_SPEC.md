@@ -147,7 +147,7 @@ The authority sets `LOW | MEDIUM | HIGH | CRITICAL`. The recommendation never be
 | 40 – < 55 | HIGH |
 | ≥ 55 | CRITICAL |
 
-The UI shows each factor, the severity source and the label.
+The UI shows each factor, the severity source and the label. Score and factors are returned rounded to 2 decimals; the label uses the unrounded score.
 
 ### 5.10 Demo calibration (regression test)
 The demo spot sits inside a seeded risk zone with `risk_value = 80` (§14). There must be no resolved pothole within 50 m in the last 90 days, so recurrence = 0.
@@ -157,6 +157,8 @@ The demo spot sits inside a seeded risk zone with `risk_value = 80` (§14). Ther
 | Demo pothole, first report (citizen picks HIGH) | 75 | 25.0 (1 reporter) | 0 | 80 | 47.25 | HIGH |
 | After the second citizen attaches | 75 | 39.6 (2 reporters) | 0 | 80 | 50.17 | HIGH |
 | Generic new report, no severity, outside zones | 50 | 25.0 | 0 | 25 | 27.50 | MEDIUM |
+
+Scores are shown rounded to 2 decimals and drift up slightly with age (the second row reads 50.18 a few seconds after the report); labels are unaffected.
 
 An integration test asserts all three rows.
 
