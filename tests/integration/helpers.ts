@@ -20,10 +20,28 @@ import {
   DEMO_SPOT,
   STORAGE_BUCKETS,
   type Category,
+  type EventType,
   type StorageBucket,
 } from "../../src/config/civic.ts";
 import { apiEnvelopeSchema, apiErrorSchema, type ErrorCode } from "../../src/contracts/envelope.ts";
-import { createReportResponseSchema, type CreateReportBodyInput } from "../../src/contracts/reports.ts";
+import {
+  assignIssueResponseSchema,
+  issueDetailResponseSchema,
+  resolveIssueResponseSchema,
+  transitionIssueResponseSchema,
+  type AssignIssueResponse,
+  type IssueDetail,
+  type ResolveIssueResponse,
+  type TimelineActor,
+  type TimelineEvent,
+  type TransitionIssueResponse,
+} from "../../src/contracts/issues.ts";
+import {
+  createReportResponseSchema,
+  myReportsResponseSchema,
+  type CreateReportBodyInput,
+  type MyReportsResponse,
+} from "../../src/contracts/reports.ts";
 
 // ---------------------------------------------------------------------------
 // Environment
@@ -49,6 +67,10 @@ export const env = {
   serviceRoleKey: trimmed("SUPABASE_SERVICE_ROLE_KEY"),
   /** Optional here (the app needs it); when set, tests also check the stored IP hash. */
   ipHashSalt: process.env.IP_HASH_SALT ?? "",
+  /** The authority account `demo:reset` creates (scripts/demo-reset.ts lower-cases the email). */
+  authorityEmail: trimmed("AUTHORITY_EMAIL").toLowerCase(),
+  /** Not trimmed: demo-reset sets the password exactly as given. */
+  authorityPassword: process.env.AUTHORITY_PASSWORD ?? "",
 };
 
 /** The friendly 429 message (phase-1 contract, 02 §9). Same text for both limits. */
@@ -245,12 +267,20 @@ export async function fetchPhoto(path: string, opts: { token?: string } = {}): P
   };
 }
 
-/** Asserts `path` serves exactly the uploaded test JPEG (TINY_JPEG) with the public cache header. */
-export async function expectPhoto(path: string, opts: { token?: string } = {}): Promise<void> {
+/** Cache-Control of a photo anyone may see (photo route, 02 §10.3). */
+export const PUBLIC_PHOTO_CACHE = "public, max-age=300, s-maxage=300";
+/** Cache-Control of a REJECTED issue's photo, served only to its reporters and authorities. */
+export const VIEWER_ONLY_PHOTO_CACHE = "private, no-store";
+
+/**
+ * Asserts `path` serves exactly the uploaded test JPEG (TINY_JPEG) with the expected cache header
+ * (default: the public one).
+ */
+export async function expectPhoto(path: string, opts: { token?: string; cacheControl?: string } = {}): Promise<void> {
   const photo = await fetchPhoto(path, opts);
   assert.equal(photo.status, 200, `GET ${path}: expected 200, got ${photo.status}: ${photo.text}`);
   assert.equal(photo.contentType, "image/jpeg");
-  assert.equal(photo.cacheControl, "public, max-age=300, s-maxage=300");
+  assert.equal(photo.cacheControl, opts.cacheControl ?? PUBLIC_PHOTO_CACHE);
   assert.deepEqual(photo.bytes, TINY_JPEG, `GET ${path} did not return the uploaded bytes`);
 }
 
@@ -437,3 +467,214 @@ export function jsonStrings(value: unknown, skipKeys: readonly string[] = []): s
 }
 
 export const PRIVATE_KEYS = ["reporter_user_id", "reporter_ip_hash", "actor_user_id", "uploaded_by", "image_path"] as const;
+
+// ---------------------------------------------------------------------------
+// Geometry: metre offsets
+// ---------------------------------------------------------------------------
+
+// WGS84 ellipsoid: PostGIS geography distances (ST_DWithin / ST_Distance) use the spheroid.
+const WGS84_A = 6_378_137;
+const WGS84_E2 = 0.006_694_379_990_14;
+
+/**
+ * The point `metersNorth` / `metersEast` away from (lat, lng), using the WGS84 meridional and
+ * prime-vertical radii of curvature at that latitude — accurate to millimetres over the few hundred
+ * metres the duplicate tests use (02 §3.2 radii), so `distance_m` can be checked to ±0.5 m.
+ */
+export function offsetPoint(lat: number, lng: number, metersNorth: number, metersEast: number): LatLng {
+  const phi = (lat * Math.PI) / 180;
+  const w = 1 - WGS84_E2 * Math.sin(phi) ** 2;
+  const meridional = (WGS84_A * (1 - WGS84_E2)) / w ** 1.5;
+  const primeVertical = WGS84_A / Math.sqrt(w);
+  return {
+    lat: lat + (metersNorth / meridional) * (180 / Math.PI),
+    lng: lng + (metersEast / (primeVertical * Math.cos(phi))) * (180 / Math.PI),
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Fresh issues and the reads that show them
+// ---------------------------------------------------------------------------
+
+export interface FreshIssue {
+  /** The reporter (a fresh anonymous citizen unless one was passed in). */
+  citizen: Citizen;
+  issueId: string;
+  reportId: string;
+  body: CreateReportBodyInput;
+  point: LatLng;
+}
+
+/**
+ * A new issue created through POST /api/reports, by default as a fresh citizen at a random point
+ * in northern Mumbai (randomMumbaiPoint: ≥ 2 km from DEMO_SPOT and the City Pulse scenario).
+ * Pass `body` to pick the category / point; pass `citizen` to reuse one (5 reports/hour each).
+ */
+export async function newIssue(
+  opts: { citizen?: Citizen; body?: Partial<CreateReportBodyInput>; ip?: string | null } = {},
+): Promise<FreshIssue> {
+  const citizen = opts.citizen ?? (await newCitizen());
+  const { issueId, reportId, body } = await createReport(citizen, { body: opts.body, ip: opts.ip });
+  return { citizen, issueId, reportId, body, point: { lat: body.lat, lng: body.lng } };
+}
+
+/** GET /api/issues/:id (anonymous unless a token is given), asserting 200 + the contract. */
+export async function getIssue(issueId: string, opts: { token?: string } = {}): Promise<IssueDetail> {
+  return expectOk(await api("GET", `/api/issues/${issueId}`, { token: opts.token, ip: null }), issueDetailResponseSchema);
+}
+
+/** GET /api/my-reports as the citizen, asserting 200 + the contract. */
+export async function getMyReports(citizen: { accessToken: string }): Promise<MyReportsResponse> {
+  return expectOk(await api("GET", "/api/my-reports", { token: citizen.accessToken }), myReportsResponseSchema);
+}
+
+/**
+ * Asserts the timeline's event types, oldest first. Each inner array is one write: events written
+ * by the same transaction share `created_at`, and the timeline then orders them by id (random),
+ * so their order within a group is not asserted. Also checks `created_at` never goes backwards
+ * and, when given, each group's actor kind.
+ */
+export function expectTimeline(
+  timeline: readonly TimelineEvent[],
+  groups: readonly (readonly EventType[])[],
+  actors?: readonly TimelineActor[],
+): void {
+  const shown = JSON.stringify(timeline.map((e) => [e.event_type, e.actor]));
+  assert.equal(timeline.length, groups.flat().length, `timeline ${shown}`);
+  let i = 0;
+  groups.forEach((group, g) => {
+    const events = timeline.slice(i, i + group.length);
+    assert.deepEqual(events.map((e) => e.event_type).sort(), [...group].sort(), `timeline group ${g} in ${shown}`);
+    const actor = actors?.[g];
+    if (actor) for (const e of events) assert.equal(e.actor, actor, `actor of ${e.event_type} in ${shown}`);
+    i += group.length;
+  });
+  for (let k = 1; k < timeline.length; k++) {
+    assert.ok(
+      Date.parse(timeline[k - 1]!.created_at) <= Date.parse(timeline[k]!.created_at),
+      `timeline is not oldest-first: ${shown}`,
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Authority (02 §7.2): the account `npm run demo:reset` creates
+// ---------------------------------------------------------------------------
+
+const AUTHORITY_ENV = ["AUTHORITY_EMAIL", "AUTHORITY_PASSWORD"] as const;
+
+/**
+ * Why tests that act as the authority are skipped: the stack's skip reason, else missing
+ * AUTHORITY_EMAIL / AUTHORITY_PASSWORD. With INTEGRATION_REQUIRED=1 they run anyway, and
+ * `authority()` fails with the missing-variable message.
+ */
+export const authoritySkipReason: string | false =
+  skipReason ||
+  (AUTHORITY_ENV.some((n) => !process.env[n]?.trim()) && process.env.INTEGRATION_REQUIRED !== "1"
+    ? `authority account not configured: set ${AUTHORITY_ENV.join(" and ")} (the values \`npm run demo:reset -- --local\` used)`
+    : false);
+
+/** testOptions() for tests that need the authority account. */
+export function authorityTestOptions(extra: { timeout?: number; skip?: string | false } = {}): {
+  skip: string | false;
+  timeout: number;
+} {
+  return testOptions({ ...extra, skip: authoritySkipReason || extra.skip || false });
+}
+
+export type Authority = Citizen;
+
+async function signInAuthority(): Promise<Authority> {
+  const missing = AUTHORITY_ENV.filter((n) => !process.env[n]?.trim());
+  if (missing.length > 0) throw new Error(`missing ${missing.join(", ")} (see tests/integration/README.md)`);
+  const client = createClient(env.supabaseUrl, env.anonKey, CLIENT_OPTIONS);
+  const { data, error } = await client.auth.signInWithPassword({
+    email: env.authorityEmail,
+    password: env.authorityPassword,
+  });
+  if (error || !data.session || !data.user) {
+    throw new Error(
+      `authority sign-in as ${env.authorityEmail} failed: ${error?.message ?? "no session"} — ` +
+        "run `npm run demo:reset -- --local` with the same AUTHORITY_EMAIL / AUTHORITY_PASSWORD",
+    );
+  }
+  const { data: row, error: rowError } = await adminClient()
+    .from("users")
+    .select("role")
+    .eq("id", data.user.id)
+    .maybeSingle();
+  if (rowError) throw new Error(`users lookup failed: ${rowError.message}`);
+  if ((row as { role?: string } | null)?.role !== "AUTHORITY") {
+    throw new Error(`${env.authorityEmail} has no AUTHORITY users row — run \`npm run demo:reset -- --local\``);
+  }
+  return { client, userId: data.user.id, accessToken: data.session.access_token };
+}
+
+let authoritySession: Promise<Authority> | undefined;
+
+/** The authority account, signed in once per test file (email/password, no persisted session). */
+export function authority(): Promise<Authority> {
+  authoritySession ??= signInAuthority();
+  return authoritySession;
+}
+
+/** Uploads a fresh photo into the authority's own `resolution-photos` folder; returns its path. */
+export async function uploadResolutionPhoto(auth: Authority): Promise<string> {
+  const path = photoPath(auth.userId);
+  const error = await tryUpload(auth.client, STORAGE_BUCKETS.resolutionPhotos, path);
+  if (error) throw new Error(`resolution photo upload to ${path} failed: ${error.message}`);
+  return path;
+}
+
+/** supabase/seed.sql departments (fixed ids), as GET /api/departments returns them: by name. */
+export const SEED_DEPARTMENTS = [
+  { id: "5eedde00-0000-4000-8000-000000000001", name: "Roads", sla_hours: 72, default_categories: ["POTHOLE", "FOOTPATH", "PUBLIC_PROPERTY"] },
+  { id: "5eedde00-0000-4000-8000-000000000003", name: "Solid Waste", sla_hours: 72, default_categories: ["GARBAGE"] },
+  { id: "5eedde00-0000-4000-8000-000000000005", name: "Storm Water Drainage", sla_hours: 72, default_categories: ["DRAINAGE", "WATERLOGGING"] },
+  { id: "5eedde00-0000-4000-8000-000000000002", name: "Street Lighting", sla_hours: 72, default_categories: ["STREETLIGHT"] },
+  { id: "5eedde00-0000-4000-8000-000000000004", name: "Water Supply", sla_hours: 72, default_categories: ["WATER_LEAK"] },
+] as const satisfies readonly { id: string; name: string; sla_hours: number; default_categories: readonly Category[] }[];
+
+export const ROADS = SEED_DEPARTMENTS[0];
+
+/** POST /api/issues/:id/assign as the authority, asserting 200. */
+export async function assignIssue(auth: Authority, issueId: string, departmentId: string): Promise<AssignIssueResponse> {
+  const res = await api("POST", `/api/issues/${issueId}/assign`, {
+    token: auth.accessToken,
+    body: { department_id: departmentId },
+  });
+  return expectOk(res, assignIssueResponseSchema);
+}
+
+/** PATCH /api/issues/:id/status → IN_PROGRESS ("Start work"), asserting 200. */
+export async function startWork(auth: Authority, issueId: string): Promise<TransitionIssueResponse> {
+  const res = await api("PATCH", `/api/issues/${issueId}/status`, {
+    token: auth.accessToken,
+    body: { to_status: "IN_PROGRESS" },
+  });
+  return expectOk(res, transitionIssueResponseSchema);
+}
+
+/** Uploads an after-photo and POSTs /api/issues/:id/resolution, asserting 200. */
+export async function resolveIssue(
+  auth: Authority,
+  issueId: string,
+  note: string | null = "[integration test] fixed",
+): Promise<ResolveIssueResponse> {
+  const res = await api("POST", `/api/issues/${issueId}/resolution`, {
+    token: auth.accessToken,
+    body: { image_path: await uploadResolutionPhoto(auth), note },
+  });
+  return expectOk(res, resolveIssueResponseSchema);
+}
+
+/** REPORTED → ASSIGNED (Roads by default) → IN_PROGRESS → RESOLVED. */
+export async function assignStartResolve(
+  auth: Authority,
+  issueId: string,
+  departmentId: string = ROADS.id,
+): Promise<ResolveIssueResponse> {
+  await assignIssue(auth, issueId, departmentId);
+  await startWork(auth, issueId);
+  return resolveIssue(auth, issueId);
+}
