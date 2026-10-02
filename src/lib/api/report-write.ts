@@ -4,9 +4,10 @@
  *   POST /api/issues/:id/support  → add_supporting_report(..., p_issue_id, ...)  (Phase 3)
  */
 import { z } from "zod";
-import { RATE_LIMIT_CONFIG } from "@/config/civic";
+import { DUPLICATE_CONFIG, RATE_LIMIT_CONFIG } from "@/config/civic";
 import { imagePathBelongsTo, uuidSchema } from "@/contracts/primitives";
 import type { CreateReportBody } from "@/contracts/reports";
+import { ISSUE_NOT_FOUND_MESSAGE } from "./authority-write";
 import { RATE_LIMITED_MESSAGE, type DbErrorMessages } from "./db-errors";
 import { ApiRouteError } from "./respond";
 
@@ -32,6 +33,23 @@ export function reportWriteArgs(actorId: string, ipHash: string, body: CreateRep
   };
 }
 
+/**
+ * add_supporting_report args: the shared ones plus the target issue. p_config
+ * also carries the compatible families so SQL never hard-codes them.
+ */
+export function supportWriteArgs(
+  actorId: string,
+  ipHash: string,
+  issueId: string,
+  body: CreateReportBody,
+): Record<string, unknown> {
+  return {
+    ...reportWriteArgs(actorId, ipHash, body),
+    p_issue_id: issueId,
+    p_config: { ...RATE_LIMIT_CONFIG, compatible_families: DUPLICATE_CONFIG.compatible_families },
+  };
+}
+
 /** jsonb returned by both write functions. */
 export const reportWriteRowSchema = z.object({ issue_id: uuidSchema, report_id: uuidSchema });
 export type ReportWriteRow = z.infer<typeof reportWriteRowSchema>;
@@ -46,4 +64,21 @@ export const REPORT_WRITE_ERRORS: DbErrorMessages = {
     /photo not found/i.test(detail)
       ? PHOTO_NOT_FOUND_MESSAGE
       : "Some of the report details aren't valid. Please check them and try again.",
+};
+
+export const SUPPORT_ISSUE_CLOSED_MESSAGE =
+  "This issue is already closed, so it can't take new reports. Please create a new issue instead.";
+export const SUPPORT_CATEGORY_MISMATCH_MESSAGE = "That category doesn't match this issue.";
+
+/** add_supporting_report: the create_report errors plus PT404 missing issue, PT409 closed issue, PT400 category mismatch. */
+export const SUPPORT_WRITE_ERRORS: DbErrorMessages = {
+  ...REPORT_WRITE_ERRORS,
+  NOT_FOUND: ISSUE_NOT_FOUND_MESSAGE,
+  CONFLICT: SUPPORT_ISSUE_CLOSED_MESSAGE,
+  VALIDATION_FAILED: (detail) =>
+    /category does not match/i.test(detail)
+      ? SUPPORT_CATEGORY_MISMATCH_MESSAGE
+      : /photo not found/i.test(detail)
+        ? PHOTO_NOT_FOUND_MESSAGE
+        : "Some of the report details aren't valid. Please check them and try again.",
 };

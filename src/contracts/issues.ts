@@ -255,7 +255,7 @@ export const mergeIssueParamsSchema = issueIdParamsSchema;
 export type MergeIssueParams = z.infer<typeof mergeIssueParamsSchema>;
 
 /**
- * The route must reject `target_issue_id === :id` (CONFLICT) before calling
+ * The route must reject `target_issue_id === :id` (400 VALIDATION_FAILED) before calling
  * SQL; `merge_issue` re-checks. `note` is optional (02 §4 requires no reason).
  */
 export const mergeIssueBodySchema = z.object({
