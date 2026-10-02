@@ -18,7 +18,7 @@ npx supabase status -o env          # copy API_URL / ANON_KEY / SERVICE_ROLE_KEY
 #             IP_HASH_SALT (any string), AUTHORITY_EMAIL, AUTHORITY_PASSWORD
 npm run demo:reset -- --local       # migrations + seed + authority + City Pulse
 npm run dev                         # in another terminal
-npm run test:integration            # within ~10 min of demo:reset, or the seeded City Pulse test skips
+npm run test:integration            # within ~90 min of demo:reset, or the seeded City Pulse test skips
 RUN_IP_LIMIT_TEST=1 npm run test:integration   # also run the per-IP limit test (opt-in)
 RUN_DEMO_SPOT_TEST=1 npm run test:integration  # also run the DEMO_SPOT gate rehearsal (opt-in)
 npm run demo:reset -- --local                  # REQUIRED after RUN_DEMO_SPOT_TEST, before a real demo
