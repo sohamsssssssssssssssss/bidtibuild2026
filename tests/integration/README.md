@@ -1,4 +1,4 @@
-# API integration tests (Phases 1–4)
+# API integration tests (Phases 1–5)
 
 > **Unit tests** (no stack needed) live in `tests/unit/` and run with `npm run test:unit`:
 > `priority.test.ts` checks `priorityLabel` boundaries, reproduces the 02 §5.10 calibration rows
@@ -18,7 +18,7 @@ npx supabase status -o env          # copy API_URL / ANON_KEY / SERVICE_ROLE_KEY
 #             IP_HASH_SALT (any string), AUTHORITY_EMAIL, AUTHORITY_PASSWORD
 npm run demo:reset -- --local       # migrations + seed + authority + City Pulse
 npm run dev                         # in another terminal
-npm run test:integration
+npm run test:integration            # within ~10 min of demo:reset, or the seeded City Pulse test skips
 RUN_IP_LIMIT_TEST=1 npm run test:integration   # also run the per-IP limit test (opt-in)
 RUN_DEMO_SPOT_TEST=1 npm run test:integration  # also run the DEMO_SPOT gate rehearsal (opt-in)
 npm run demo:reset -- --local                  # REQUIRED after RUN_DEMO_SPOT_TEST, before a real demo
@@ -54,7 +54,13 @@ The stack check needs the Supabase URL and `APP_URL` to accept a TCP connection 
   factors are rounded), label = `priorityLabel(score)` allowing either side of a threshold within
   0.01), `expectQueueOrder()` (score desc, then `created_at` asc), `expectQueueInputs()` (service
   role: severity source follows authority → citizen → default; location risk is the default or a
-  seeded zone's value).
+  seeded zone's value). Phase 5 additions: `getHotspots()` / `regenerateHotspots()`,
+  `expectHotspotConsistent()` (one hotspot against 02 §6.4–§6.7: current ≥ 4, expected =
+  baseline / 3, trend, severity incl. the HIGH cap, the exact explanation text, an 8 h window ending
+  at `generated_at`, a closed Polygon), `expectHotspotSet()` (all of those, one `generated_at`,
+  ordered CRITICAL → LOW then current count desc then id), `polygonContains()` /
+  `polygonDistanceM()`, `cityPulseTrend()` / `cityPulseSeverity()` / `cityPulseExplanations()`, and
+  `pollUntil()`.
 - `register.ts`: a resolve hook (`node --import`) that lets Node's type stripping load the
   extensionless imports inside `src/contracts`.
 - `reports.test.ts`: create → detail / map / My Reports / photo route, validation and auth errors, and the per-user rate limit.
@@ -79,8 +85,33 @@ The stack check needs the Supabase URL and `APP_URL` to accept a TCP connection 
   candidate and attaches → support ≈ 39.62 → 50.17 HIGH (both ± 0.02 for age drift); then final
   priority HIGH, Roads, start, resolve, and A sees RESOLVED with the evidence. It first checks
   that `DEMO_SPOT` is clean (02 §14) and fails with "run `demo:reset`" if not.
+- `city-pulse.test.ts` (Phase 5, 02 §6): (1) the seeded scenario — public `GET /api/hotspots`
+  shows the CRITICAL DRAINAGE hotspot with all 7 seeded issues (6 current, 1 baseline, expected
+  0.33, trend 566.7, "6 DRAINAGE issues within ~300 m in the last 2 h (expected 0.3) — trend
+  +566%."), its Polygon covers the Kurla centre and every seeded issue, and no hotspot is near
+  `DEMO_SPOT`; (2) one test with ordered subtests (authority account needed): regenerate is 401
+  without a session, 403 for a citizen, and 200 for the authority with new ids and a newer
+  `generated_at` (GET then shows one generation); four fresh citizens report GARBAGE within ~100 m at
+  a random quiet spot and, with no regenerate call, `after()` produces a HIGH hotspot (4 current,
+  0 baseline, trend +400, capped below CRITICAL) within 15 s; a fifth citizen's supporting report
+  leaves `generated_at` unchanged for 3 s and the count at 4 after a regenerate; the authority
+  rejects one of the four — it disappears from `member_issue_ids` at once, and after a regenerate
+  the 3 left are below minpoints, so the GARBAGE hotspot is gone.
 
 ## Things to know
+
+- **The seeded City Pulse test needs a fresh `demo:reset`.** The oldest of the six current-window
+  DRAINAGE issues is created 105 min before the reset and the current window is 2 h, so the seed
+  produces "6 current, 1 baseline → CRITICAL" for only ~15 minutes. Every new issue — from any
+  test file — regenerates City Pulse (`after()`, 02 §6.8), so the test checks the seeded issues'
+  ages against the active set's `generated_at` and is **skipped** ("seeded City Pulse scenario has
+  aged out — run npm run demo:reset -- --local") instead of failing once they no longer fit (also
+  if the seeded issues are missing or no longer open). The other City Pulse tests don't depend on
+  the seed's age.
+- **"Supports don't regenerate" is checked against other files.** Test files run in parallel, and
+  their new issues regenerate City Pulse too. If the generation changes in the 3 s after the
+  supporting report, the test fails only when no other issue was created meanwhile; otherwise it
+  logs a diagnostic and moves on.
 
 - **Tests leave rows behind.** `issue_events` is append-only, so nothing is cleaned up. Every
   test report uses a `[integration test]` description and a random point in northern Mumbai at
@@ -99,7 +130,7 @@ The stack check needs the Supabase URL and `APP_URL` to accept a TCP connection 
 - **The per-IP test is opt-in** because it creates 100 reports and about 21 anonymous users.
   It uses its own fake IP, so it doesn't need a fresh `demo:reset`.
 - **Auth's own limit.** Local Auth allows 100 anonymous sign-ins per hour per real IP
-  (`supabase/config.toml`). A default run uses about 35 anonymous sign-ins (and 2 password sign-ins
+  (`supabase/config.toml`). A default run uses about 41 anonymous sign-ins (and 3 password sign-ins
   for the authority, one per file that needs it), and the per-IP test uses about 21 more. Running
   many times in an hour can hit that limit, and sign-in then fails.
 - **The queue grows.** Every run adds open issues, so `authority.test.ts` checks the queue's

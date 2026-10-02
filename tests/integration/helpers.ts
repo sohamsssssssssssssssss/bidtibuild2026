@@ -12,12 +12,15 @@
 import assert from "node:assert/strict";
 import { randomInt, randomUUID } from "node:crypto";
 import { connect } from "node:net";
+import { setTimeout as sleep } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import type { z } from "zod";
 import {
+  CITY_PULSE_CONFIG,
   CITY_PULSE_DEMO_CENTER,
   DEMO_SPOT,
+  LEVELS,
   PRIORITY_CONFIG,
   priorityLabel,
   STORAGE_BUCKETS,
@@ -33,6 +36,13 @@ import {
   type PriorityFactors,
 } from "../../src/contracts/authority.ts";
 import { apiEnvelopeSchema, apiErrorSchema, type ErrorCode } from "../../src/contracts/envelope.ts";
+import {
+  hotspotsResponseSchema,
+  regenerateHotspotsResponseSchema,
+  type GeoJsonPolygon,
+  type Hotspot,
+  type RegenerateHotspotsResponse,
+} from "../../src/contracts/hotspots.ts";
 import {
   assignIssueResponseSchema,
   issueDetailResponseSchema,
@@ -816,5 +826,144 @@ export async function expectQueueInputs(rows: readonly AuthorityQueueRow[]): Pro
     assert.equal(row.severity_source, source, `severity_source of ${row.id}`);
     assert.equal(row.effective_severity, level, `effective_severity of ${row.id}`);
     assert.ok(row.factors && riskValues.has(row.factors.location_risk), `location_risk ${row.factors?.location_risk} of ${row.id} is no zone's value`);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// City Pulse (Phase 5, 02 §6; phase-5 contract)
+// ---------------------------------------------------------------------------
+
+const HOUR_MS = 3_600_000;
+
+/** GET /api/hotspots (public, no session), asserting 200 + the contract. */
+export async function getHotspots(): Promise<Hotspot[]> {
+  return expectOk(await api("GET", "/api/hotspots", { ip: null }), hotspotsResponseSchema);
+}
+
+/** POST /api/hotspots/regenerate as the authority, asserting 200 + the contract. */
+export async function regenerateHotspots(auth: Authority): Promise<RegenerateHotspotsResponse> {
+  return expectOk(
+    await api("POST", "/api/hotspots/regenerate", { token: auth.accessToken }),
+    regenerateHotspotsResponseSchema,
+  );
+}
+
+/** Ray casting on the outer ring, planar in lng/lat (fine over the few hundred metres here). */
+export function polygonContains(polygon: GeoJsonPolygon, p: LatLng): boolean {
+  const ring = polygon.coordinates[0] ?? [];
+  let inside = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const [xi, yi] = ring[i]!;
+    const [xj, yj] = ring[j]!;
+    if (yi > p.lat !== yj > p.lat && p.lng < ((xj - xi) * (p.lat - yi)) / (yj - yi) + xi) inside = !inside;
+  }
+  return inside;
+}
+
+/** Smallest distance from `p` to any vertex of the polygon's outer ring, in metres. */
+export function polygonDistanceM(polygon: GeoJsonPolygon, p: LatLng): number {
+  return Math.min(...(polygon.coordinates[0] ?? []).map(([lng, lat]) => distanceM({ lat, lng }, p)));
+}
+
+/** Unrounded 02 §6.4 numbers for a cluster with these counts. */
+export function cityPulseTrend(current: number, baseline: number): { expected: number; trend: number } {
+  const c = CITY_PULSE_CONFIG;
+  const expected = baseline / c.baseline_divisor;
+  return { expected, trend: ((current - expected) / Math.max(expected, c.expected_floor)) * 100 };
+}
+
+/** 02 §6.5: severity from the (unrounded) trend; CRITICAL needs critical_min_current_count, else HIGH. */
+export function cityPulseSeverity(current: number, trend: number): Level {
+  const c = CITY_PULSE_CONFIG;
+  const t = c.trend_thresholds_percent;
+  if (trend >= t.CRITICAL) return current >= c.critical_min_current_count ? "CRITICAL" : "HIGH";
+  if (trend >= t.HIGH) return "HIGH";
+  if (trend >= t.MEDIUM) return "MEDIUM";
+  return "LOW";
+}
+
+/**
+ * 02 §6.7 in the phase-5 contract's exact format, e.g.
+ * "6 DRAINAGE issues within ~300 m in the last 2 h (expected 0.3) — trend +566%."
+ * The sign is always shown and the percent truncated toward zero; a trend in (-1, 0) truncates to
+ * 0, whose sign the contract leaves open, so both spellings are returned then.
+ */
+export function cityPulseExplanations(category: Category, current: number, baseline: number): string[] {
+  const c = CITY_PULSE_CONFIG;
+  const { expected, trend } = cityPulseTrend(current, baseline);
+  const whole = Math.abs(Math.trunc(trend));
+  const head = `${current} ${category} issues within ~${c.cluster_eps_m} m in the last ${c.current_window_hours} h`;
+  const text = (sign: string) => `${head} (expected ${expected.toFixed(1)}) — trend ${sign}${whole}%.`;
+  if (whole === 0) return [text("+"), text("-")];
+  return [text(trend < 0 ? "-" : "+")];
+}
+
+/**
+ * One hotspot is self-consistent (02 §6.4–§6.7, phase-5 contract): an active cluster
+ * (current ≥ min_current_count), expected = baseline / divisor (rounded 2), trend from the counts
+ * (rounded 1), severity from the trend, the exact explanation, an 8 h window ending at
+ * generated_at, a closed Polygon ring, and unique member ids (at most current + baseline: REJECTED
+ * members are hidden).
+ */
+export function expectHotspotConsistent(h: Hotspot): void {
+  const c = CITY_PULSE_CONFIG;
+  const id = `(hotspot ${h.id}, ${h.category})`;
+  assert.ok(h.current_issue_count >= c.min_current_count, `current_issue_count ${h.current_issue_count} < ${c.min_current_count} ${id}`);
+  const { expected, trend } = cityPulseTrend(h.current_issue_count, h.baseline_issue_count);
+  near(h.expected_current_count, expected, 0.005, `expected_current_count ${id}`);
+  near(h.trend_percent, trend, 0.05, `trend_percent ${id}`);
+  assert.equal(h.severity, cityPulseSeverity(h.current_issue_count, trend), `severity for trend ${trend} ${id}`);
+  const explanations = cityPulseExplanations(h.category, h.current_issue_count, h.baseline_issue_count);
+  assert.ok(explanations.includes(h.explanation), `explanation ${JSON.stringify(h.explanation)}, expected ${JSON.stringify(explanations[0])} ${id}`);
+
+  const end = Date.parse(h.window_end);
+  assert.equal(end, Date.parse(h.generated_at), `window_end must equal generated_at ${id}`);
+  assert.equal(end - Date.parse(h.window_start), c.input_window_hours * HOUR_MS, `window must span ${c.input_window_hours} h ${id}`);
+
+  for (const ring of h.geometry.coordinates) {
+    assert.deepEqual(ring[0], ring[ring.length - 1], `polygon ring not closed ${id}`);
+  }
+  assert.equal(new Set(h.member_issue_ids).size, h.member_issue_ids.length, `duplicate member ids ${id}`);
+  assert.ok(
+    h.member_issue_ids.length <= h.current_issue_count + h.baseline_issue_count,
+    `${h.member_issue_ids.length} members for ${h.current_issue_count} + ${h.baseline_issue_count} issues ${id}`,
+  );
+}
+
+/**
+ * A whole active set (GET /api/hotspots or a regenerate result): every hotspot consistent, one
+ * generation (a single distinct generated_at), ordered severity CRITICAL → LOW, then
+ * current_issue_count desc, then id. Returns that generated_at (null for an empty set).
+ */
+export function expectHotspotSet(list: readonly Hotspot[]): string | null {
+  list.forEach(expectHotspotConsistent);
+  const generations = new Set(list.map((h) => Date.parse(h.generated_at)));
+  assert.ok(generations.size <= 1, `active hotspots from ${generations.size} generations: ${JSON.stringify(list.map((h) => h.generated_at))}`);
+  const rank = (h: Hotspot) => LEVELS.indexOf(h.severity);
+  for (let i = 1; i < list.length; i++) {
+    const a = list[i - 1]!;
+    const b = list[i]!;
+    const shown = `${a.id} ${a.severity}/${a.current_issue_count} before ${b.id} ${b.severity}/${b.current_issue_count}`;
+    assert.ok(
+      rank(a) > rank(b) ||
+        (rank(a) === rank(b) &&
+          (a.current_issue_count > b.current_issue_count || (a.current_issue_count === b.current_issue_count && a.id < b.id))),
+      `hotspots out of order at ${i}: ${shown}`,
+    );
+  }
+  return list[0]?.generated_at ?? null;
+}
+
+/** Calls `probe` every `intervalMs` until it returns a value or `timeoutMs` passes. */
+export async function pollUntil<T>(
+  probe: () => Promise<T | undefined>,
+  timeoutMs: number,
+  intervalMs = 500,
+): Promise<T | undefined> {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    const value = await probe();
+    if (value !== undefined || Date.now() >= deadline) return value;
+    await sleep(intervalMs);
   }
 }
