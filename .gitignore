@@ -6,6 +6,7 @@ next-env.d.ts
 .env
 .env*.local
 .vercel/
+public/maplibre/
 supabase/.branches/
 supabase/.temp/
 test-results/
