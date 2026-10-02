@@ -1,17 +1,14 @@
-import { AuthoritySession } from "@/components/auth/AuthoritySession";
-import { MapPanel } from "@/components/map/MapPanel";
+"use client";
 
-export default function AuthorityPage() {
+import { AuthorityGate } from "@/components/auth/AuthoritySession";
+import { Queue } from "@/components/authority/Queue";
+
+export default function AuthorityQueuePage() {
   return (
     <div className="page-wrap">
-      <div className="page-heading">
-        <p className="eyebrow">Authority workspace</p>
-        <h1>City issue overview.</h1>
-        <p>Sign in to view the Phase 0 issue map.</p>
-      </div>
-      <AuthoritySession>
-        <MapPanel />
-      </AuthoritySession>
+      <AuthorityGate>
+        <Queue />
+      </AuthorityGate>
     </div>
   );
 }

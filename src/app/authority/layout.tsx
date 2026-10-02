@@ -1,4 +1,5 @@
 import Link from "next/link";
+import "./authority.css";
 
 export const dynamic = "force-dynamic";
 
@@ -15,13 +16,13 @@ export default function AuthorityLayout({
           </span>
         </Link>
         <nav aria-label="Authority navigation">
-          <Link href="/authority">Workspace</Link>
+          <Link href="/authority">Triage queue</Link>
           <Link href="/">Citizen map</Link>
         </nav>
       </header>
       <main>{children}</main>
       <footer className="site-footer">
-        Authority workspace · Phase 0 read only
+        Authority workspace · Recommendations inform; staff decide.
       </footer>
     </div>
   );

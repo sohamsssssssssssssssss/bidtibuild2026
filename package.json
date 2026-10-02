@@ -17,7 +17,7 @@
     "test:integration": "node --import ./tests/integration/register.ts --test \"tests/integration/**/*.test.ts\"",
     "test:e2e": "playwright test",
     "lint": "eslint src scripts/copy-maplibre-worker.mjs",
-    "format:check": "prettier --check \"src/app/**/*.tsx\" \"src/app/(citizen)/report/photo.ts\" \"src/app/globals.css\" \"src/components/**/*.{ts,tsx}\" \"src/lib/supabase/{browser,proxy}.ts\" \"src/proxy.ts\" \"scripts/copy-maplibre-worker.mjs\" \"eslint.config.mjs\" \"postcss.config.mjs\" \"package.json\"",
+    "format:check": "prettier --check \"src/app/**/*.tsx\" \"src/app/(citizen)/report/photo.ts\" \"src/app/globals.css\" \"src/components/**/*.{ts,tsx}\" \"src/lib/supabase/{browser,proxy}.ts\" \"src/lib/authority/*.ts\" \"src/proxy.ts\" \"scripts/copy-maplibre-worker.mjs\" \"eslint.config.mjs\" \"postcss.config.mjs\" \"package.json\"",
     "test": "node --test tests/*.test.mjs && npm run test:unit",
     "predev": "node scripts/copy-maplibre-worker.mjs",
     "prebuild": "node scripts/copy-maplibre-worker.mjs",

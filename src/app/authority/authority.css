@@ -1,0 +1,154 @@
+/* Authority workspace — shared pieces. Same palette as globals.css. */
+.authority-shell .page-wrap {
+  max-width: 1480px;
+}
+.authority-login {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 420px);
+  gap: 48px;
+  align-items: center;
+  min-height: 60vh;
+}
+
+.ap-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 9px;
+  border: 1px solid var(--chip, #bdcbcf);
+  border-radius: 999px;
+  background: #fff;
+  color: #142d3b;
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.ap-status {
+  position: relative;
+}
+.ap-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--chip, #bdcbcf);
+}
+
+.ap-category {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.ap-category-icon {
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 22px;
+  border-radius: 6px;
+  background: #123b56;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+}
+
+/* Three voices, three framings: citizen (outline), recommended (dashed), authority (solid). */
+.ap-level {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 64px;
+  padding: 3px 9px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+}
+.ap-level-citizen {
+  border: 1px solid var(--level);
+  color: var(--level);
+  background: #fff;
+}
+.ap-level-recommended {
+  border: 1.5px dashed var(--level);
+  color: var(--level);
+  background: color-mix(in srgb, var(--level) 8%, #fff);
+}
+.ap-level-authority {
+  border: 1px solid var(--level);
+  color: #fff;
+  background: var(--level);
+}
+.ap-level-empty {
+  border: 1px dashed #bdcbcf;
+  color: #657783;
+  background: #f4f7f7;
+  font-weight: 600;
+  text-transform: none;
+}
+
+.ap-muted {
+  color: #526774;
+}
+.ap-error {
+  color: #a12a2a;
+}
+.ap-button {
+  padding: 9px 14px;
+  border: 0;
+  border-radius: 7px;
+  color: #fff;
+  background: #123b56;
+  font-weight: 700;
+  cursor: pointer;
+}
+.ap-button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+.ap-button-secondary {
+  border: 1px solid #a9bdc2;
+  color: #123b56;
+  background: #fff;
+}
+.ap-button-danger {
+  border: 1px solid #a12a2a;
+  color: #a12a2a;
+  background: #fff;
+}
+.ap-card {
+  padding: 20px;
+  border: 1px solid #d8e1e3;
+  border-radius: 13px;
+  background: #fff;
+}
+.ap-card h2 {
+  margin: 0 0 4px;
+  font-size: 16px;
+}
+.ap-kicker {
+  margin: 0 0 10px;
+  color: #32725f;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+@media (max-width: 900px) {
+  .authority-login {
+    grid-template-columns: 1fr;
+    gap: 20px;
+  }
+}
+.ap-visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
