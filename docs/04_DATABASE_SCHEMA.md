@@ -140,6 +140,9 @@ Shared rules for every function below:
 | `merge_issue(p_actor_id, p_source_id, p_target_id, p_note)` | authority route | `02` §3.7 |
 | `authority_queue(p_config, p_filters jsonb)` | authority route | Read only; one row per open issue with: id, category, status, final_priority, effective_severity, severity_source, the four other factors, score, label, department, sla_due_at; sorted by score descending |
 | `regenerate_city_pulse(p_config)` | report route via `after()`, regenerate route, reset script | `02` §6 |
+| `map_issues(p_min_lng, p_min_lat, p_max_lng, p_max_lat, p_categories, p_statuses)` | public map route | Read only; table of map markers inside the bbox (`02` §12); never `REJECTED` or `MERGED`; a null array means no filter |
+| `issue_detail(p_issue_id, p_viewer_id)` | public detail route | Read only; sanitised jsonb (no reporter/actor ids, IP hashes or metadata; timeline actor is `CITIZEN`/`AUTHORITY`/`SYSTEM`) or null; a `REJECTED` issue only for an authority or a viewer with a report on it (mirrors §4), with every image path null (`02` §10.3) |
+| `my_reports(p_user_id)` | citizen route | Read only; jsonb array of the user's reports, newest first, each with its current issue (follows merges) and latest resolution evidence; image paths null for `REJECTED` issues |
 
 ## 4. Row-level security
 RLS is enabled on every table. There are **no INSERT, UPDATE or DELETE policies**; all writes go through §3. As a second layer, `anon` and `authenticated` have their INSERT/UPDATE/DELETE/TRUNCATE table privileges revoked (SELECT stays, filtered by RLS).
