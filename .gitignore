@@ -8,3 +8,5 @@ next-env.d.ts
 .vercel/
 supabase/.branches/
 supabase/.temp/
+test-results/
+playwright-report/

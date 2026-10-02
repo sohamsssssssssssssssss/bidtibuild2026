@@ -27,6 +27,7 @@ Realtime) · Zod · MapLibre + OpenFreeMap · Vercel. Nothing else is added with
 | `supabase/seed.sql` | demo data: departments, risk zones, ~39 issues, the City Pulse scenario |
 | `supabase/tests/` | SQL tests, run by `npm run db:test` |
 | `tests/unit/`, `tests/integration/` | Node test suites (see [Tests](#tests)) |
+| `e2e/`, `src/config/testids.ts` | Playwright judge-path test and its `data-testid` contract |
 | `scripts/demo-reset.ts` | `npm run demo:reset` |
 
 ## Run it locally
@@ -92,8 +93,8 @@ docker pull mirror.gcr.io/library/kong:2.8.1 && docker tag mirror.gcr.io/library
   anonymous citizen session in that browser.
 - The demo pothole goes at `DEMO_SPOT` (`src/config/civic.ts`). Its recommended priority is HIGH,
   around 47.25 with one reporter and 50.17–50.18 with two.
-- Rehearse the backend path with `RUN_DEMO_SPOT_TEST=1 npm run test:integration`, then **reset
-  again**, because that test leaves a resolved pothole at `DEMO_SPOT`.
+- Rehearse with `npm run test:e2e` (full UI path) or `RUN_DEMO_SPOT_TEST=1 npm run test:integration`
+  (API only), then **reset again**, because both leave a resolved pothole at `DEMO_SPOT`.
 
 ## Tests
 
@@ -103,6 +104,7 @@ docker pull mirror.gcr.io/library/kong:2.8.1 && docker tag mirror.gcr.io/library
 | `npm run test:unit` | nothing | priority labels, the 02 §5 formula against `PRIORITY_CONFIG`, transition helpers |
 | `npm run db:test` | local Postgres 16 + PostGIS on `localhost:5432` (user/password `postgres`) | every SQL function, RLS, storage policies, seed, City Pulse, TS↔SQL transition agreement, concurrent City Pulse runs |
 | `npm run test:integration` | `supabase start` + `demo:reset --local` + `npm run dev` | the real API end to end, including the judge-demo flow |
+| `npm run test:e2e` | `supabase start` + `demo:reset --local` (+ `npx playwright install chromium` once) | the judge demo (03 §6) through the UI in three browser sessions; the full path skips until the frontend renders |
 
 - `db:test` rebuilds a throwaway database from the migrations on plain Postgres, using a small
   Supabase stand-in (`scripts/db-test/supabase-shim.sql`). It's quick and needs no Docker.
@@ -110,6 +112,8 @@ docker pull mirror.gcr.io/library/kong:2.8.1 && docker tag mirror.gcr.io/library
 - `test:integration` skips (exit 0) when the stack isn't running. `INTEGRATION_REQUIRED=1` makes
   that a failure. Opt-in extras: `RUN_IP_LIMIT_TEST=1` and `RUN_DEMO_SPOT_TEST=1`. Details are in
   [`tests/integration/README.md`](tests/integration/README.md).
+- `test:e2e` (Playwright) and the selector contract the frontend should follow
+  (`src/config/testids.ts`) are described in [`e2e/README.md`](e2e/README.md).
 
 ## API at a glance
 

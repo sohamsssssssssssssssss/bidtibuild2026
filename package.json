@@ -14,7 +14,8 @@
     "db:test": "bash scripts/db-test/run.sh",
     "demo:reset": "node scripts/demo-reset.ts",
     "test:unit": "node --import ./tests/integration/register.ts --test \"tests/unit/**/*.test.ts\"",
-    "test:integration": "node --import ./tests/integration/register.ts --test \"tests/integration/**/*.test.ts\""
+    "test:integration": "node --import ./tests/integration/register.ts --test \"tests/integration/**/*.test.ts\"",
+    "test:e2e": "playwright test"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.7",
@@ -25,6 +26,7 @@
     "zod": "^4.6.5"
   },
   "devDependencies": {
+    "@playwright/test": "^1.63.0",
     "@types/node": "^26.6.4",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
