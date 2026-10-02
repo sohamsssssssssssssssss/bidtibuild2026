@@ -54,7 +54,7 @@ const totalBefore = Number(query("select count(*) from public.hotspots"));
 
 await Promise.all([run("A"), run("B")]);
 
-const [active, distinctGeneratedAt, totalAfter] = query(
+const [active = NaN, distinctGeneratedAt = NaN, totalAfter = NaN] = query(
   "select count(*) filter (where active), count(distinct generated_at) filter (where active), count(*) " +
     "from public.hotspots",
 )
