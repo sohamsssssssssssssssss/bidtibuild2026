@@ -1,6 +1,13 @@
-/** POST /api/hotspots/regenerate — stub until Phase 5 (City Pulse); see docs/WORK_SPLIT.md. */
-import { notImplemented } from "@/lib/api/respond";
+/**
+ * POST /api/hotspots/regenerate — authority only (02 §6.8, §13). No body.
+ * Runs `regenerate_city_pulse(CITY_PULSE_CONFIG)` and returns the new active
+ * set so the UI can redraw without refetching.
+ */
+import { regenerateCityPulse, requireAuthority, respondOk, withApi } from "@/lib/api";
 
-export function POST(): Response {
-  return notImplemented("POST /api/hotspots/regenerate", 5);
-}
+export const dynamic = "force-dynamic";
+
+export const POST = withApi(async (req) => {
+  await requireAuthority(req);
+  return respondOk(await regenerateCityPulse());
+});

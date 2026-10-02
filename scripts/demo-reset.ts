@@ -13,6 +13,8 @@
  * SUPABASE_SERVICE_ROLE_KEY, AUTHORITY_EMAIL, AUTHORITY_PASSWORD. The password is never logged.
  */
 import { spawn } from "node:child_process";
+import { resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { createClient, type SupabaseClient, type User } from "@supabase/supabase-js";
 import { CITY_PULSE_CONFIG } from "../src/config/civic.ts";
 
@@ -120,6 +122,43 @@ async function ensureAuthority(admin: SupabaseClient, env: Env): Promise<{ id: s
 
 type PulseOutcome = { status: "ran"; result: unknown } | { status: "skipped" };
 
+/** The fields of a hotspot (src/contracts/hotspots.ts) the summary needs. */
+type HotspotSummaryFields = {
+  severity: string;
+  category: string;
+  current_issue_count: number;
+  baseline_issue_count: number;
+};
+
+function isHotspotSummaryFields(value: unknown): value is HotspotSummaryFields {
+  if (typeof value !== "object" || value === null) return false;
+  const h = value as Record<string, unknown>;
+  return (
+    typeof h.severity === "string" &&
+    typeof h.category === "string" &&
+    typeof h.current_issue_count === "number" &&
+    typeof h.baseline_issue_count === "number"
+  );
+}
+
+/**
+ * One line for `regenerate_city_pulse`'s result `{ generated_at, hotspots: [...] }`, e.g.
+ * "1 hotspot: CRITICAL DRAINAGE (6 current, 1 baseline)". Falls back to the raw
+ * JSON (truncated) if the result doesn't have that shape. Pure; exported for testing.
+ */
+export function summarizeCityPulse(result: unknown): string {
+  const hotspots = (result as { hotspots?: unknown } | null)?.hotspots;
+  if (!Array.isArray(hotspots) || !hotspots.every(isHotspotSummaryFields)) {
+    return `unexpected result: ${JSON.stringify(result)?.slice(0, 500) ?? "undefined"}`;
+  }
+  const count = `${hotspots.length} hotspot${hotspots.length === 1 ? "" : "s"}`;
+  if (hotspots.length === 0) return count;
+  const items = hotspots.map(
+    (h) => `${h.severity} ${h.category} (${h.current_issue_count} current, ${h.baseline_issue_count} baseline)`,
+  );
+  return `${count}: ${items.join("; ")}`;
+}
+
 /** Step 3: City Pulse (02 §6.8). Missing function (PGRST202) = not built yet (Phase 5). */
 async function regenerateCityPulse(admin: SupabaseClient): Promise<PulseOutcome> {
   console.log("\n▶ 3/3 regenerate_city_pulse");
@@ -131,7 +170,7 @@ async function regenerateCityPulse(admin: SupabaseClient): Promise<PulseOutcome>
     }
     throw new Error(`regenerate_city_pulse failed: ${error.code ?? ""} ${error.message}`.trim());
   }
-  console.log(`  done: ${JSON.stringify(data)?.slice(0, 500) ?? "null"}`);
+  console.log(`  done: ${summarizeCityPulse(data)}`);
   return { status: "ran", result: data };
 }
 
@@ -165,4 +204,7 @@ async function main(): Promise<void> {
   );
 }
 
-main().catch((err: unknown) => fail(err instanceof Error ? err.message : String(err)));
+// Run only as the entry script, so `summarizeCityPulse` can be imported without resetting anything.
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  main().catch((err: unknown) => fail(err instanceof Error ? err.message : String(err)));
+}
