@@ -8,3 +8,4 @@ next-env.d.ts
 .vercel/
 supabase/.branches/
 supabase/.temp/
+public/maplibre/
