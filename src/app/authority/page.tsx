@@ -1,4 +1,5 @@
 import { MapPanel } from "@/components/map/MapPanel";
+import { AuthoritySession } from "@/components/auth/AuthoritySession";
 
 export default function AuthorityPage() {
   return (
@@ -14,7 +15,9 @@ export default function AuthorityPage() {
         </div>
         <span className="phase-tag">Phase 0 foundation</span>
       </div>
-      <MapPanel />
+      <AuthoritySession>
+        <MapPanel />
+      </AuthoritySession>
     </div>
   );
 }

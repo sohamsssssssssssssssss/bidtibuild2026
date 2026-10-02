@@ -2,9 +2,17 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { ExpressionSpecification, GeoJSONSource } from "maplibre-gl";
-import { MAP_DEFAULT_VIEW, MAP_STYLE_URL, STATUS_META } from "@/config/civic";
+import {
+  CATEGORY_META,
+  MAP_DEFAULT_VIEW,
+  MAP_STYLE_URL,
+  STATUS_META,
+} from "@/config/civic";
 import { apiEnvelopeSchema } from "@/contracts/envelope";
-import { issuesResponseSchema } from "@/contracts/issues";
+import {
+  issueDetailResponseSchema,
+  issuesResponseSchema,
+} from "@/contracts/issues";
 import { formatBbox } from "@/contracts/primitives";
 import { categoryIcons } from "./legend";
 
@@ -146,9 +154,6 @@ export function CityMap() {
           setMapState("ready");
 
           const loadIssues = async () => {
-            request?.abort();
-            request = new AbortController();
-            const signal = request.signal;
             const bounds = map.getBounds();
             const bbox = formatBbox({
               minLng: Math.max(-180, bounds.getWest()),
@@ -158,6 +163,9 @@ export function CityMap() {
             });
             if (bbox === lastBbox) return;
             lastBbox = bbox;
+            request?.abort();
+            request = new AbortController();
+            const signal = request.signal;
             setIssuesState("loading");
             try {
               const response = await fetch(
@@ -186,7 +194,6 @@ export function CityMap() {
               setIssuesState(issues.length ? "ready" : "empty");
             } catch {
               if (!signal.aborted) {
-                lastBbox = undefined;
                 setIssuesState("error");
               }
             }
@@ -209,23 +216,56 @@ export function CityMap() {
             zoom: await source.getClusterExpansionZoom(clusterId),
           });
         });
-        map.on("click", "issue-points", (event) => {
+        map.on("click", "issue-points", async (event) => {
           const feature = event.features?.[0];
           if (feature?.geometry.type !== "Point") return;
           const props = feature.properties;
           const popup = document.createElement("div");
           const title = document.createElement("strong");
-          title.textContent = `${props.category.replaceAll("_", " ")} · ${STATUS_META[props.status as keyof typeof STATUS_META]?.label ?? props.status}`;
+          title.textContent = `${CATEGORY_META[props.category as keyof typeof CATEGORY_META]?.label ?? props.category} · ${STATUS_META[props.status as keyof typeof STATUS_META]?.label ?? props.status}`;
           popup.append(title);
           if (props.is_seed) {
             const badge = document.createElement("p");
-            badge.textContent = "Demo data · Photo unavailable";
+            badge.textContent = "Demo data";
             popup.append(badge);
           }
-          new Popup({ offset: 18 })
+          const details = document.createElement("p");
+          details.textContent = "Loading issue details…";
+          popup.append(details);
+          const photo = document.createElement("p");
+          if (props.is_seed) photo.textContent = "Photo unavailable";
+          popup.append(photo);
+          const openPopup = new Popup({ offset: 18 })
             .setLngLat(feature.geometry.coordinates as [number, number])
             .setDOMContent(popup)
             .addTo(map);
+          try {
+            const response = await fetch(
+              `/api/issues/${encodeURIComponent(props.id)}`,
+              { cache: "no-store" },
+            );
+            const parsed = apiEnvelopeSchema(
+              issueDetailResponseSchema,
+            ).safeParse(await response.json());
+            if (!response.ok || !parsed.success || parsed.data.error)
+              throw new Error("Issue detail unavailable");
+            if (!openPopup.isOpen()) return;
+            const issue = parsed.data.data;
+            details.textContent = `${issue.photos[0]?.description ?? "No report description available."} · ${issue.report_count} ${issue.report_count === 1 ? "report" : "reports"}`;
+            const imageUrl = issue.photos[0]?.image_url;
+            if (imageUrl) {
+              photo.textContent = "";
+              const link = document.createElement("a");
+              link.href = imageUrl;
+              link.target = "_blank";
+              link.rel = "noopener noreferrer";
+              link.textContent = "View photo";
+              photo.append(link);
+            } else photo.textContent = "Photo unavailable";
+          } catch {
+            if (openPopup.isOpen())
+              details.textContent = "Issue details unavailable.";
+          }
         });
       })
       .catch(() => setMapState("error"));

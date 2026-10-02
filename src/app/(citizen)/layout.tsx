@@ -19,6 +19,7 @@ export default function CitizenLayout({
           <Link href="/" aria-current="page">
             Issue map
           </Link>
+          <Link href="/my-reports">My Reports</Link>
           <Link href="/authority">Authority</Link>
         </nav>
       </header>
