@@ -333,7 +333,7 @@ Seed contents (every timestamp relative to `now()`; every seeded issue has `is_s
 - **Departments**, each with `default_categories`: Roads, Street Lighting, Solid Waste, Water Supply, Storm Water Drainage.
 - **Risk zone** "Demo arterial road" with `risk_value = 80`, containing `DEMO_SPOT`. `DEMO_SPOT` is chosen in Phase 0 inside the Mumbai demo area and recorded in `civic.ts`. A test asserts that the zone contains it.
 - **About 30 normal issues** with reports across the demo area, in mixed statuses, with their events and evidence. Seeded reports use fixed demo `reporter_user_id` uuids.
-- **City Pulse scenario:** 6 `DRAINAGE` issues within 300 m of each other created in the last 2 h, plus at most 1 in the preceding 6 h. This produces one CRITICAL hotspot (§6.5). It sits well away from `DEMO_SPOT`.
+- **City Pulse scenario:** 6 `DRAINAGE` issues within 300 m of each other created in the last 2 h, plus at most 1 in the preceding 6 h. This produces one CRITICAL hotspot (§6.5). It sits well away from `DEMO_SPOT`. The current-window issues are 3–30 min old at reset, so the scenario stays CRITICAL for about 90 minutes after `demo:reset`; reset again shortly before presenting.
 - **Clear demo spot:** no unresolved `POTHOLE` within 50 m of `DEMO_SPOT`, and no `RESOLVED` pothole there in the last 90 days, which keeps §5.10 exact.
 
 ## 15. Testing

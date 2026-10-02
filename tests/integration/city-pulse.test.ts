@@ -5,7 +5,7 @@
  * member that is hidden and then breaks its cluster.
  *
  * Test 1 reads the hotspot `npm run demo:reset` computed. The seed's current window only holds all
- * six DRAINAGE issues for ~15 minutes after the reset (the oldest is created 105 min before it and
+ * six DRAINAGE issues for ~90 minutes after the reset (the oldest is created 30 min before it and
  * the current window is 2 h), and every new issue — from any test file — regenerates City Pulse.
  * So test 1 checks the seeded issues' ages against the active set's generated_at and SKIPS
  * ("aged out — run npm run demo:reset -- --local") instead of failing when they no longer fit.

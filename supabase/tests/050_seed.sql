@@ -258,8 +258,8 @@ begin
     raise exception 'City Pulse cluster within 5 km of DEMO_SPOT';
   end if;
   if (select min(created_at) from public.issues where id = any(r.members) and created_at >= now() - interval '2 hours')
-     < now() - interval '110 minutes' then
-    raise exception 'oldest current-window issue leaves less than 10 min of margin';
+     < now() - interval '35 minutes' then
+    raise exception 'oldest current-window issue is older than ~35 min: the hotspot would age out within ~85 min of demo:reset';
   end if;
 end $$;
 

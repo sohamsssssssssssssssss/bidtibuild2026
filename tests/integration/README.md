@@ -101,8 +101,8 @@ The stack check needs the Supabase URL and `APP_URL` to accept a TCP connection 
 ## Things to know
 
 - **The seeded City Pulse test needs a fresh `demo:reset`.** The oldest of the six current-window
-  DRAINAGE issues is created 105 min before the reset and the current window is 2 h, so the seed
-  produces "6 current, 1 baseline → CRITICAL" for only ~15 minutes. Every new issue — from any
+  DRAINAGE issues is created 30 min before the reset and the current window is 2 h, so the seed
+  produces "6 current, 1 baseline → CRITICAL" for about 90 minutes. Every new issue — from any
   test file — regenerates City Pulse (`after()`, 02 §6.8), so the test checks the seeded issues'
   ages against the active set's `generated_at` and is **skipped** ("seeded City Pulse scenario has
   aged out — run npm run demo:reset -- --local") instead of failing once they no longer fit (also

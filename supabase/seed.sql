@@ -158,19 +158,20 @@ insert into seed_issue (n, category, lat, lng, created_ago, reporter, severity, 
 -- 4b. City Pulse scenario (02 §6, §14): DRAINAGE issues around the Kurla centre
 -- (lat 19.0728, lng 72.8826). Every point is within ~110 m of the centre, so every pairwise
 -- distance is < 300 m and DBSCAN (eps 300 m, minpoints 4, EPSG:32643) puts them in one cluster.
---   * 101–106: current window (last 2 h), created 12–105 min ago → current_count = 6
+--   * 101–106: current window (last 2 h), created 3–30 min ago → current_count = 6
 --   * 107:     baseline window (2–8 h ago)                         → baseline_count = 1
 -- expected = 1/3, trend = (6 - 0.33) / max(0.33, 1) * 100 ≈ +567 % and current ≥ 6 → CRITICAL.
--- The current window has a 15 min margin (oldest is 105 min) for demo:reset to reach step 3.
+-- The oldest current issue is 30 min old, so the hotspot stays CRITICAL for ~90 min after
+-- demo:reset (and 107 stays in the baseline window for ~3 h 50 min). Reset shortly before presenting.
 -- (offsets from the centre: dx east / dy north in metres, lat = 19.0728 + dy/111320,
 --  lng = 72.8826 + dx/105210)
 insert into seed_issue (n, category, lat, lng, created_ago, reporter, severity, description) values
-  (101, 'DRAINAGE', 19.07316, 72.88184, '105 minutes', 3, 'HIGH',   'Drain overflowing onto the main road after the heavy shower. Water entering shops.'),  -- (-80,  40)
-  (102, 'DRAINAGE', 19.07343, 72.88317, '88 minutes',  6, 'MEDIUM', 'Blocked drain outside the school. Dirty water spreading across the lane.'),         -- ( 60,  70)
-  (103, 'DRAINAGE', 19.07199, 72.88279, '64 minutes',  9, 'HIGH',   'Sewage-mixed water backing up from the gutter near the market.'),                   -- ( 20, -90)
-  (104, 'DRAINAGE', 19.07226, 72.88212, '47 minutes', 10, null,     'Drain chamber cover lifted by water pressure. Water gushing out.'),                -- (-50, -60)
-  (105, 'DRAINAGE', 19.07262, 72.88346, '29 minutes', 12, 'MEDIUM', 'Roadside nullah choked with plastic, overflowing near the bus stop.'),              -- ( 90, -20)
-  (106, 'DRAINAGE', 19.07370, 72.88250, '12 minutes',  1, 'HIGH',   'Drain overflowing into the housing society compound.'),                             -- (-10, 100)
+  (101, 'DRAINAGE', 19.07316, 72.88184, '30 minutes',  3, 'HIGH',   'Drain overflowing onto the main road after the heavy shower. Water entering shops.'),  -- (-80,  40)
+  (102, 'DRAINAGE', 19.07343, 72.88317, '25 minutes',  6, 'MEDIUM', 'Blocked drain outside the school. Dirty water spreading across the lane.'),         -- ( 60,  70)
+  (103, 'DRAINAGE', 19.07199, 72.88279, '20 minutes',  9, 'HIGH',   'Sewage-mixed water backing up from the gutter near the market.'),                   -- ( 20, -90)
+  (104, 'DRAINAGE', 19.07226, 72.88212, '14 minutes', 10, null,     'Drain chamber cover lifted by water pressure. Water gushing out.'),                -- (-50, -60)
+  (105, 'DRAINAGE', 19.07262, 72.88346, '8 minutes',  12, 'MEDIUM', 'Roadside nullah choked with plastic, overflowing near the bus stop.'),              -- ( 90, -20)
+  (106, 'DRAINAGE', 19.07370, 72.88250, '3 minutes',   1, 'HIGH',   'Drain overflowing into the housing society compound.'),                             -- (-10, 100)
   (107, 'DRAINAGE', 19.07289, 72.88298, '4 hours 10 minutes', 7, 'MEDIUM', 'Slow-draining gutter, water standing near the corner shop.');                -- ( 40,  10)
 
 -- Supporting reports (another citizen chose "This is the same issue"). Offsets in metres from the
@@ -200,7 +201,7 @@ insert into seed_support (n, reporter, ago, dx_m, dy_m, severity, category, desc
   (23, 10, '1 day 6 hours',  -25,  40, 'HIGH',   null,       'Water still standing at the junction, buses diverted.'),
   (31,  7, '10 days',          5,   5, 'MEDIUM', null,       'Pothole at the bus stop is still there.'),
   -- City Pulse: a supporting report never increases the hotspot count (02 §6.1).
-  (102, 4, '75 minutes',      15,  -5, 'HIGH',   null,       'Same blocked drain, water now reaching the school gate.');
+  (102, 4, '18 minutes',      15,  -5, 'HIGH',   null,       'Same blocked drain, water now reaching the school gate.');
 
 -- Lifecycle (all `ago` values are before now; the check block enforces the order).
 -- Authority priority / severity (set_priority): PRIORITY_SET and/or SEVERITY_CONFIRMED.
@@ -228,7 +229,7 @@ insert into seed_assign (n, dept, ago) values
   (23, 5, '1 day 8 hours'),    (24, 5, '4 days'),          (25, 5, '14 days'),
   (26, 1, '5 days 12 hours'),  (27, 1, '20 days'),         (29, 1, '8 days'),
   (31, 1, '11 days'),
-  (101, 5, '40 minutes'),      (107, 5, '3 hours');
+  (101, 5, '12 minutes'),      (107, 5, '3 hours');
 
 -- Start work (transition_issue → IN_PROGRESS): STATUS_CHANGED.
 create temp table seed_start (n int primary key, ago interval not null);
