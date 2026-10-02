@@ -77,6 +77,7 @@ let fetchMock: ReturnType<typeof vi.fn>;
 function setup(
   options: {
     candidates?: DuplicateCandidate[];
+    source?: IssueDetail;
     lookupError?: boolean;
     detailError?: boolean;
     merge?: (call: number) => object;
@@ -84,7 +85,8 @@ function setup(
 ) {
   let mergeCalls = 0;
   fetchMock = vi.fn(async (input: string, init?: RequestInit) => {
-    if (input === `/api/issues/${sourceId}`) return ok(source);
+    if (input === `/api/issues/${sourceId}`)
+      return ok(options.source ?? source);
     if (input.startsWith("/api/duplicate-candidates?"))
       return options.lookupError
         ? fail("Lookup unavailable")
@@ -140,6 +142,20 @@ describe("authority duplicate review", () => {
     expect(screen.getByText("Road surface damaged")).toBeTruthy();
     expect(screen.getByText("Demo data")).toBeTruthy();
     expect(screen.getAllByText("Photo unavailable")).toHaveLength(2);
+  });
+
+  it("uses the seed fallback even when the API supplies a photo route", async () => {
+    setup({
+      source: {
+        ...source,
+        photos: [
+          { ...source.photos[0]!, image_url: `/api/photos/report/${reportId}` },
+        ],
+      },
+    });
+    await compare();
+    expect(screen.getAllByText("Photo unavailable")).toHaveLength(2);
+    expect(screen.queryAllByRole("img")).toHaveLength(0);
   });
 
   it("distinguishes an empty result from a failed lookup", async () => {

@@ -120,7 +120,8 @@ export function CityMap() {
       );
 
       async function load(force = false) {
-        if (!map) return;
+        // Resize/move events may fire before the load handler installs the source.
+        if (!map || !map.getSource("issues")) return;
         const bounds = map.getBounds();
         const bbox = formatBbox({
           minLng: bounds.getWest(),

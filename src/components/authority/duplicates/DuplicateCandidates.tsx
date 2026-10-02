@@ -90,7 +90,7 @@ function IssueSide({ issue, title }: { issue: IssueDetail; title: string }) {
       </p>
       <div className={styles.evidence}>
         <Photo
-          url={issue.photos[0]?.image_url ?? null}
+          url={issue.is_seed ? null : (issue.photos[0]?.image_url ?? null)}
           alt={`Report evidence for ${CATEGORY_META[issue.category].label}`}
         />
         <div className={styles.evidenceText}>
