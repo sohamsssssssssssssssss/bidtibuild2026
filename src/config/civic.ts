@@ -468,6 +468,17 @@ export const RATE_LIMIT_CONFIG = {
 } as const;
 export type RateLimitConfig = typeof RATE_LIMIT_CONFIG;
 
+/**
+ * Passed as `p_config` to `resolution_stats(p_config)` (GET /api/stats/resolution, 02 §13).
+ * Report-to-resolution time per category over issues resolved within the window, plus the
+ * current open count. A demo card, not the broad analytics that 01 §2 leaves as stretch.
+ */
+export const RESOLUTION_STATS_CONFIG = {
+  window_days: 90,
+  open_statuses: openStatuses(),
+} as const;
+export type ResolutionStatsConfig = typeof RESOLUTION_STATS_CONFIG;
+
 // ---------------------------------------------------------------------------
 // Other constants
 // ---------------------------------------------------------------------------

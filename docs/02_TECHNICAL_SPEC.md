@@ -322,6 +322,7 @@ Details:
 | `POST /api/issues/:id/merge` | authority | target_issue_id, note | §3.7 |
 | `GET /api/hotspots` | public | — | Active hotspots, member issue ids, `generated_at` |
 | `POST /api/hotspots/regenerate` | authority | — | §6.8 |
+| `GET /api/stats/resolution` | public | — | Per category: issues resolved in the last `RESOLUTION_STATS_CONFIG.window_days` (90), mean and median hours from report to resolution, how many are demo data, and the current open count. Counts only; a demo card, not stretch analytics |
 
 ## 14. Seed and demo reset
 `npm run demo:reset` runs three steps:
