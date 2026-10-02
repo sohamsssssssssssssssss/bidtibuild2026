@@ -9,3 +9,4 @@ export * from "./respond";
 export * from "./storage";
 export * from "./read-rows";
 export * from "./report-write";
+export * from "./authority-write";
