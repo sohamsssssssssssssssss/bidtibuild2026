@@ -4,6 +4,12 @@
 -- Note: now() is fixed for the whole transaction, so every report created here has the same created_at.
 begin;
 
+-- The assertions below read tables back while still acting as service_role (the role the API uses
+-- to call these functions). service_role has no direct table grants (migration 20261002063252), so
+-- grant read access for this rolled-back test only; the functions themselves need no grants.
+grant select on public.issues, public.reports, public.issue_events, public.resolution_evidence,
+  public.departments, public.users to service_role;
+
 create function pg_temp.assert_eq(p_label text, p_got anyelement, p_want anyelement)
 returns void language plpgsql as $$
 begin
