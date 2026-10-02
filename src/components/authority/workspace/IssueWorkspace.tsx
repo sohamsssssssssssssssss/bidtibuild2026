@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
-import { openStatuses, type IssueStatus } from "@/config/civic";
 import type { IssueDetail } from "@/contracts/issues";
 import {
   CategoryChip,
@@ -13,7 +12,7 @@ import { AuthorityApiError, authorityApi } from "@/lib/authority/api";
 import { ageLabel, coords, dateTime, shortId } from "@/lib/authority/format";
 import { CitizenSignal } from "./CitizenSignal";
 import { DecisionPanel, type DepartmentsState } from "./DecisionPanel";
-import { Duplicates } from "./Duplicates";
+import { DuplicateCandidates } from "@/components/authority/duplicates/DuplicateCandidates";
 import { Recommendation, type RowState } from "./Recommendation";
 import { errorText, isAuthError } from "./shared";
 
@@ -207,9 +206,6 @@ function Workspace({
         </div>
         <div className="ws-col">
           <Recommendation issue={issue} state={row} />
-          {(openStatuses() as IssueStatus[]).includes(issue.status) && (
-            <Duplicates issue={issue} />
-          )}
         </div>
         <div className="ws-col">
           <DecisionPanel
@@ -220,6 +216,8 @@ function Workspace({
           />
         </div>
       </div>
+
+      <DuplicateCandidates issueId={issue.id} onMerged={() => void reload()} />
     </>
   );
 }
