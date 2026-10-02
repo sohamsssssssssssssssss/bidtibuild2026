@@ -12,7 +12,8 @@
     "start": "next start",
     "typecheck": "tsc --noEmit",
     "db:test": "bash scripts/db-test/run.sh",
-    "demo:reset": "node scripts/demo-reset.ts"
+    "demo:reset": "node scripts/demo-reset.ts",
+    "test:integration": "node --import ./tests/integration/register.ts --test \"tests/integration/**/*.test.ts\""
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.7",
