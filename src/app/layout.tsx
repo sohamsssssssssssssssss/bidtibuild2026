@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "maplibre-gl/dist/maplibre-gl.css";
 import "./globals.css";
+import { ServiceWorkerCleanup } from "@/components/ServiceWorkerCleanup";
 
 export const metadata: Metadata = {
   title: "CivicPulse AI",
@@ -12,7 +13,10 @@ export default function RootLayout({
 }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body>
+        <ServiceWorkerCleanup />
+        {children}
+      </body>
     </html>
   );
 }

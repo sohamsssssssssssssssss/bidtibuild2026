@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import {
   createContext,
+  useSyncExternalStore,
   FormEvent,
   useContext,
   useEffect,
@@ -118,10 +119,21 @@ export function AuthorityGate({
   );
 }
 
+const noopSubscribe = () => () => {};
+
 export function AuthorityLoginForm() {
   const router = useRouter();
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  // Until this client code has hydrated, Sign in stays disabled so the browser
+  // can never fall back to a native form submission.
+  const hydrated = useSyncExternalStore(
+    noopSubscribe,
+    () => true,
+    () => false,
+  );
 
   useEffect(() => {
     let active = true;
@@ -139,13 +151,12 @@ export function AuthorityLoginForm() {
     event.preventDefault();
     setBusy(true);
     setError("");
-    const form = new FormData(event.currentTarget);
     const supabase = createSupabaseBrowserClient();
     try {
       const { data, error: authError } = await supabase.auth.signInWithPassword(
         {
-          email: String(form.get("email")),
-          password: String(form.get("password")),
+          email: email.trim(),
+          password,
         },
       );
       if (authError) {
@@ -181,12 +192,14 @@ export function AuthorityLoginForm() {
         For authorized municipal staff. Citizen sessions cannot open the
         authority workspace.
       </p>
-      <form onSubmit={login}>
+      {/* POST + unnamed inputs: even without JavaScript, credentials can never land in the URL. */}
+      <form method="post" onSubmit={(event) => void login(event)}>
         <label>
           Email
           <input
-            name="email"
             type="email"
+            value={email}
+            onChange={(event) => setEmail(event.target.value)}
             autoComplete="username"
             required
             data-testid={TESTIDS.authorityEmail}
@@ -195,8 +208,9 @@ export function AuthorityLoginForm() {
         <label>
           Password
           <input
-            name="password"
             type="password"
+            value={password}
+            onChange={(event) => setPassword(event.target.value)}
             autoComplete="current-password"
             required
             data-testid={TESTIDS.authorityPassword}
@@ -204,10 +218,10 @@ export function AuthorityLoginForm() {
         </label>
         <button
           type="submit"
-          disabled={busy}
+          disabled={busy || !hydrated}
           data-testid={TESTIDS.authorityLogin}
         >
-          {busy ? "Signing in…" : "Sign in"}
+          {!hydrated ? "Loading…" : busy ? "Signing in…" : "Sign in"}
         </button>
       </form>
       {error && (
