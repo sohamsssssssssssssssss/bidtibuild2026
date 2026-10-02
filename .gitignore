@@ -10,3 +10,4 @@ supabase/.branches/
 supabase/.temp/
 test-results/
 playwright-report/
+public/maplibre/
