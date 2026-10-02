@@ -62,7 +62,7 @@ Return at most **5** candidates. Each carries: issue id, category, status, dista
 No confidence score is shown or stored, because there is no real model behind one. Text and image similarity are stretch.
 
 ### 3.6 Citizen rule
-Never auto-merge. Show the ranked candidates and let the citizen choose **"This is the same issue"** (adds a supporting report) or **"Create a new issue"**.
+Never auto-merge. Show the ranked candidates and let the citizen choose **"This is the same issue"** (adds a supporting report) or **"Create a new issue"**. A supporting report must have the issue's category or one from the same family (§3.4); if the chosen issue has since been merged, it attaches to the merge target.
 
 ### 3.7 Authority merge
 - The source and target must each have status `REPORTED`, `ASSIGNED` or `IN_PROGRESS`, and must be different issues.
@@ -147,7 +147,7 @@ The authority sets `LOW | MEDIUM | HIGH | CRITICAL`. The recommendation never be
 | 40 – < 55 | HIGH |
 | ≥ 55 | CRITICAL |
 
-The UI shows each factor, the severity source and the label.
+The UI shows each factor, the severity source and the label. Score and factors are returned rounded to 2 decimals; the label uses the unrounded score.
 
 ### 5.10 Demo calibration (regression test)
 The demo spot sits inside a seeded risk zone with `risk_value = 80` (§14). There must be no resolved pothole within 50 m in the last 90 days, so recurrence = 0.
@@ -157,6 +157,8 @@ The demo spot sits inside a seeded risk zone with `risk_value = 80` (§14). Ther
 | Demo pothole, first report (citizen picks HIGH) | 75 | 25.0 (1 reporter) | 0 | 80 | 47.25 | HIGH |
 | After the second citizen attaches | 75 | 39.6 (2 reporters) | 0 | 80 | 50.17 | HIGH |
 | Generic new report, no severity, outside zones | 50 | 25.0 | 0 | 25 | 27.50 | MEDIUM |
+
+Scores are shown rounded to 2 decimals and drift up slightly with age (the second row reads 50.18 a few seconds after the report); labels are unaffected.
 
 An integration test asserts all three rows.
 
@@ -240,8 +242,8 @@ Every mutation follows one path:
 - The only direct client write is the photo upload (§10).
 
 ### 7.4 Reads
-- Map, detail, queue and My Reports go through API routes.
-- Public responses never include `reporter_user_id`, `reporter_ip_hash` or citizen actor ids.
+- Map, detail, queue, My Reports and photos go through API routes.
+- Public responses never include `reporter_user_id`, `reporter_ip_hash` or citizen actor ids. They also never include storage paths or Storage URLs, which embed the uploader's uid (§10.2).
 - Realtime reads `issues` directly under RLS (`04` §4).
 - The service-role key is server-only and never appears in a `NEXT_PUBLIC_*` variable.
 
@@ -273,16 +275,18 @@ Details:
 ### 10.2 Buckets
 | Bucket | Insert | Read | `allowed_mime_types` | `file_size_limit` |
 |---|---|---|---|---|
-| `report-photos` | authenticated; path must start with `{auth.uid()}/` | public | `image/jpeg` | 2 MB |
-| `resolution-photos` | authority only | public | `image/jpeg` | 2 MB |
+| `report-photos` | authenticated; path must start with `{auth.uid()}/` | private: uploader's own folder only; everyone else via `GET /api/photos/report/:report_id` | `image/jpeg` | 2 MB |
+| `resolution-photos` | authority only, own folder | private: uploader's own folder only; everyone else via `GET /api/photos/evidence/:evidence_id` | `image/jpeg` | 2 MB |
 
 - Object path: `{uid}/{uuid}.jpg`.
-- API routes verify that a submitted `image_path` starts with the caller's uid and that the object exists.
+- The API route checks that a submitted `image_path` starts with the caller's uid; `create_report` re-checks the prefix and that the object exists in storage.
+- Because the path embeds the uploader's uid, responses never contain a storage path or Storage URL (§7.4). `image_url` is the same-origin photo route `/api/photos/{report|evidence}/{id}`. The route resolves the object with `photo_object` (`04` §3), downloads it with the service role and streams it as `image/jpeg` with `Cache-Control: public, max-age=300, s-maxage=300` (`private, no-store` for a REJECTED issue's photo, which only some viewers may see).
+- The only SELECT policies on `storage.objects` are "read own folder" for `authenticated`, so an uploader can read its upload back. A plain upload (`upsert: false`) needs only INSERT. Upsert would also need SELECT + UPDATE, and there is no UPDATE policy.
 
 ### 10.3 Moderation
-- Public API responses never return image paths for `REJECTED` issues.
-- The objects stay in storage for audit, under unguessable paths.
-- `ponytail:` anyone who already has the URL can still open it. Switch to a private bucket with signed URLs if that matters.
+- Photos of a `REJECTED` issue are served only to an authority or to a viewer with a report on that issue (the same rule as `issue_detail` and the `issues` RLS policy, `04` §4). Everyone else gets 404 from the photo route, and public API responses don't reference them.
+- The photo route enforces this on every request, because the buckets are private. Rejection takes effect for new requests at once. Browser and CDN copies of a previously public photo expire within 5 minutes (`max-age=300`).
+- The objects stay in storage for audit.
 - No face or licence-plate redaction is claimed.
 
 ## 11. Realtime
@@ -297,7 +301,7 @@ Details:
 - The default viewport (`MAP_DEFAULT_VIEW`) and `DEMO_SPOT` live in `civic.ts`.
 
 ## 13. API
-- Every response uses the envelope `{ data: T | null, error: { code: string, message: string } | null }`.
+- Every response uses the envelope `{ data: T | null, error: { code: string, message: string } | null }`. The one exception is a successful `GET /api/photos/:kind/:id`, which returns the JPEG bytes.
 - Every route validates its input with the Zod schemas in `src/contracts/`.
 
 | Route | Who | Input | Does |
@@ -308,6 +312,7 @@ Details:
 | `GET /api/issues` | public | bbox, category[], status[] | Map markers |
 | `GET /api/issues/:id` | public | — | Detail, public photos, sanitised timeline, resolution evidence |
 | `GET /api/my-reports` | citizen | — | Caller's reports, each with its current issue |
+| `GET /api/photos/:kind/:id` | public (viewer-aware) | kind: `report` \| `evidence`; id: report id / evidence id | Streams the photo (`image/jpeg`, not an envelope) via `photo_object`; 404 envelope if unknown or hidden (§10.2–10.3) |
 | `GET /api/departments` | authority | — | Department list for assignment |
 | `GET /api/authority/queue` | authority | status, category, department filters | `authority_queue()` |
 | `PATCH /api/issues/:id/priority` | authority | final_priority?, authority_severity? | Sets either or both |
@@ -328,7 +333,7 @@ Seed contents (every timestamp relative to `now()`; every seeded issue has `is_s
 - **Departments**, each with `default_categories`: Roads, Street Lighting, Solid Waste, Water Supply, Storm Water Drainage.
 - **Risk zone** "Demo arterial road" with `risk_value = 80`, containing `DEMO_SPOT`. `DEMO_SPOT` is chosen in Phase 0 inside the Mumbai demo area and recorded in `civic.ts`. A test asserts that the zone contains it.
 - **About 30 normal issues** with reports across the demo area, in mixed statuses, with their events and evidence. Seeded reports use fixed demo `reporter_user_id` uuids.
-- **City Pulse scenario:** 6 `DRAINAGE` issues within 300 m of each other created in the last 2 h, plus at most 1 in the preceding 6 h. This produces one CRITICAL hotspot (§6.5). It sits well away from `DEMO_SPOT`.
+- **City Pulse scenario:** 6 `DRAINAGE` issues within 300 m of each other created in the last 2 h, plus at most 1 in the preceding 6 h. This produces one CRITICAL hotspot (§6.5). It sits well away from `DEMO_SPOT`. The current-window issues are 3–30 min old at reset, so the scenario stays CRITICAL for about 90 minutes after `demo:reset`; reset again shortly before presenting.
 - **Clear demo spot:** no unresolved `POTHOLE` within 50 m of `DEMO_SPOT`, and no `RESOLVED` pothole there in the last 90 days, which keeps §5.10 exact.
 
 ## 15. Testing
