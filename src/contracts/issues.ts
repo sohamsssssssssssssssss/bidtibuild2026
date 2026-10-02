@@ -8,9 +8,12 @@
  *   POST  /api/issues/:id/resolution     — authority
  *   POST  /api/issues/:id/merge          — authority
  *
- * Privacy (06 §22, 02 §7.4, §10.3): public responses never include
- * reporter_user_id, reporter_ip_hash or actor ids; `image_url` is null for
- * every photo of a REJECTED issue.
+ * Privacy (06 §22, 02 §7.4, §10.2–10.3): public responses never include
+ * reporter_user_id, reporter_ip_hash or actor ids. `image_url` is the photo
+ * route path (`/api/photos/{report|evidence}/{id}`), never a Storage path/URL
+ * (those embed the uploader's uid). A REJECTED issue — and its photos — is
+ * visible only to authorities and to its own reporters; the photo route
+ * enforces the same rule.
  */
 import { z } from "zod";
 import { MAP_STATUSES, NOTE_REQUIRED_STATUSES, STATUS_PATCH_TARGETS, type IssueStatus } from "../config/civic";

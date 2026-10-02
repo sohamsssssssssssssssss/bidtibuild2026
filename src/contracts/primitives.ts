@@ -12,8 +12,11 @@
  *   suffix: `?category=POTHOLE&category=GARBAGE`, `?category[]=POTHOLE`,
  *   `?category=POTHOLE,GARBAGE`. Convert URLSearchParams with
  *   `searchParamsToObject()` before parsing so repeated keys are kept.
- * - Photo URLs: responses carry `image_url` — a full public Storage URL built
- *   server-side — never a raw storage path. `null` when hidden (REJECTED issue).
+ * - Photo URLs: responses carry `image_url` — a same-origin photo route path
+ *   (`/api/photos/report/<report id>` or `/api/photos/evidence/<evidence id>`)
+ *   built server-side — never a storage path or Storage URL, which would embed
+ *   the uploader's uid (02 §10.2, 06 rule 22). `null` when hidden (REJECTED
+ *   issue, for viewers who are neither an authority nor one of its reporters).
  */
 import { z } from "zod";
 import {
@@ -35,9 +38,6 @@ export const isoDateTimeSchema = z.iso.datetime({ offset: true });
 
 export const latSchema = z.number().min(-90).max(90);
 export const lngSchema = z.number().min(-180).max(180);
-
-/** Public Storage URL built server-side; null when the photo is hidden. */
-export const imageUrlSchema = z.url().nullable();
 
 // ---------------------------------------------------------------------------
 // Enums (values from civic.ts)
@@ -82,6 +82,24 @@ export const imagePathSchema = z.string().regex(IMAGE_PATH_REGEX, "Expected {uid
 export function imagePathBelongsTo(path: string, uid: string): boolean {
   return path.startsWith(`${uid.toLowerCase()}/`);
 }
+
+// ---------------------------------------------------------------------------
+// Photo route (02 §10.2, §13): GET /api/photos/:kind/:id
+// ---------------------------------------------------------------------------
+
+/** `report` → a report's photo (id = report id); `evidence` → a resolution_evidence photo. */
+export const PHOTO_KINDS = ["report", "evidence"] as const;
+export const photoKindSchema = z.enum(PHOTO_KINDS);
+export type PhotoKind = z.infer<typeof photoKindSchema>;
+
+export const photoParamsSchema = z.object({ kind: photoKindSchema, id: uuidSchema });
+export type PhotoParams = z.infer<typeof photoParamsSchema>;
+
+/** `/api/photos/(report|evidence)/<uuid>` — relative, same origin as the API. */
+export const PHOTO_URL_REGEX = new RegExp(`^/api/photos/(${PHOTO_KINDS.join("|")})/${HEX_UUID}$`, "i");
+
+/** Photo route path built server-side (src/lib/api/storage.ts `photoUrl`); null when the photo is hidden. */
+export const imageUrlSchema = z.string().regex(PHOTO_URL_REGEX, "Expected /api/photos/{kind}/{id}").nullable();
 
 // ---------------------------------------------------------------------------
 // Query-string helpers

@@ -1,18 +1,16 @@
-import type { StorageBucket } from "@/config/civic";
-import { requiredEnv } from "./env";
+/**
+ * Photo URLs (02 §10.2). Both buckets are private and objects live at
+ * `{uid}/{uuid}.jpg`, so a Storage URL would expose the uploader's uid
+ * (06 rule 22). Responses instead point at the app's own photo route, which
+ * resolves the object server-side (`photo_object`) and streams it back.
+ */
+import type { PhotoKind } from "@/contracts/primitives";
 
-/** Public Storage URL for an object path (02 §10.2: both buckets are public-read). */
-export function publicImageUrl(bucket: StorageBucket, path: string): string {
-  const base = requiredEnv("NEXT_PUBLIC_SUPABASE_URL").replace(/\/+$/, "");
-  const encoded = path.split("/").map(encodeURIComponent).join("/");
-  return `${base}/storage/v1/object/public/${bucket}/${encoded}`;
-}
-
-/** Replaces a row's `image_path` with `image_url` (null stays null: hidden photo, 02 §10.3). */
-export function withImageUrl<T extends { image_path: string | null }>(
-  row: T,
-  bucket: StorageBucket,
-): Omit<T, "image_path"> & { image_url: string | null } {
-  const { image_path, ...rest } = row;
-  return { ...rest, image_url: image_path === null ? null : publicImageUrl(bucket, image_path) };
+/**
+ * Same-origin URL of a photo: `/api/photos/report/<report id>` or
+ * `/api/photos/evidence/<resolution_evidence id>` (served by
+ * src/app/api/photos/[kind]/[id]/route.ts).
+ */
+export function photoUrl(kind: PhotoKind /* "report" | "evidence" */, id: string): string {
+  return `/api/photos/${kind}/${encodeURIComponent(id)}`;
 }

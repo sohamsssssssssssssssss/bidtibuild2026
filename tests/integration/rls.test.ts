@@ -1,8 +1,8 @@
 /**
  * RLS and grants seen from a real anonymous citizen's Supabase client (02 §7.3, §10.2, §15;
  * 04 §4): no direct table writes, no reading other people's reports or the raw audit tables,
- * no calling service-role functions, and Storage uploads only into the caller's own
- * report-photos folder. Every "blocked" claim is double-checked with the service role.
+ * no calling service-role functions, and Storage uploads (and direct reads) only in the caller's
+ * own report-photos folder. Every "blocked" claim is double-checked with the service role.
  */
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
@@ -204,13 +204,22 @@ test("RLS: a citizen cannot call service-role functions (create_report, my_repor
   assert.ok(error !== null, `my_reports must not be executable by citizens (got ${JSON.stringify(data)})`);
 });
 
-test("Storage: uploads only into the caller's own report-photos folder; photos cannot be replaced or deleted", testOptions(), async () => {
+test("Storage: uploads only into the caller's own report-photos folder; private reads; photos cannot be replaced or deleted", testOptions(), async () => {
   const citizen = await newCitizen();
   const other = await newCitizen();
 
   // Own folder works (positive control).
   const ownPath = await uploadPhoto(citizen);
   assert.equal(await objectExists(STORAGE_BUCKETS.reportPhotos, ownPath), true);
+
+  // Buckets are private (02 §10.2): the uploader can read its own folder back, nobody else can —
+  // photos reach other people only through GET /api/photos/:kind/:id.
+  const ownRead = await citizen.client.storage.from(STORAGE_BUCKETS.reportPhotos).download(ownPath);
+  assert.equal(ownRead.error, null, `uploader cannot read its own photo: ${ownRead.error?.message}`);
+  const otherRead = await other.client.storage.from(STORAGE_BUCKETS.reportPhotos).download(ownPath);
+  assert.notEqual(otherRead.error, null, "another citizen read someone else's photo straight from Storage");
+  const anonRead = await anonClient().storage.from(STORAGE_BUCKETS.reportPhotos).download(ownPath);
+  assert.notEqual(anonRead.error, null, "anon read a photo straight from Storage");
 
   // Another uid's folder.
   const foreign = photoPath(other.userId);

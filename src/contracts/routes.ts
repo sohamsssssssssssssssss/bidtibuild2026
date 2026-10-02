@@ -3,6 +3,10 @@
  * `params` = path params, `query` = query string (parse the output of
  * `searchParamsToObject`), `body` = JSON body, `response` = envelope `data`.
  * `null` means the route takes no such input.
+ *
+ * Not listed: `GET /api/photos/:kind/:id` (public), which answers with JPEG
+ * bytes rather than an envelope on success; its params are
+ * `photoParamsSchema` (primitives.ts) and errors use the envelope.
  */
 import type { z } from "zod";
 import * as A from "./authority";

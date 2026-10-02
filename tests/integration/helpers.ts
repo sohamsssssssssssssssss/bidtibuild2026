@@ -212,9 +212,46 @@ export async function uploadPhoto(citizen: Citizen): Promise<string> {
   return path;
 }
 
-/** What the API must return as `image_url` for a report photo (src/lib/api/storage.ts). */
-export function publicPhotoUrl(bucket: StorageBucket, path: string): string {
+/** What the API must return as `image_url`: the same-origin photo route (src/lib/api/storage.ts `photoUrl`). */
+export function photoRoutePath(kind: "report" | "evidence", id: string): string {
+  return `/api/photos/${kind}/${id}`;
+}
+
+/** Old-style public Storage URL. Both buckets are private now (02 §10.2), so it must not serve the photo. */
+export function storagePublicUrl(bucket: StorageBucket, path: string): string {
   return `${env.supabaseUrl}/storage/v1/object/public/${bucket}/${path}`;
+}
+
+export interface PhotoResult {
+  status: number;
+  contentType: string | null;
+  cacheControl: string | null;
+  bytes: Uint8Array;
+  text: string;
+}
+
+/** GETs a photo route path (e.g. an `image_url` from a response) from the app. */
+export async function fetchPhoto(path: string, opts: { token?: string } = {}): Promise<PhotoResult> {
+  const headers: Record<string, string> = {};
+  if (opts.token) headers.authorization = `Bearer ${opts.token}`;
+  const res = await fetch(`${env.appUrl}${path}`, { headers, signal: AbortSignal.timeout(60_000) });
+  const bytes = new Uint8Array(await res.arrayBuffer());
+  return {
+    status: res.status,
+    contentType: res.headers.get("content-type"),
+    cacheControl: res.headers.get("cache-control"),
+    bytes,
+    text: new TextDecoder().decode(bytes.slice(0, 500)),
+  };
+}
+
+/** Asserts `path` serves exactly the uploaded test JPEG (TINY_JPEG) with the public cache header. */
+export async function expectPhoto(path: string, opts: { token?: string } = {}): Promise<void> {
+  const photo = await fetchPhoto(path, opts);
+  assert.equal(photo.status, 200, `GET ${path}: expected 200, got ${photo.status}: ${photo.text}`);
+  assert.equal(photo.contentType, "image/jpeg");
+  assert.equal(photo.cacheControl, "public, max-age=300, s-maxage=300");
+  assert.deepEqual(photo.bytes, TINY_JPEG, `GET ${path} did not return the uploaded bytes`);
 }
 
 // ---------------------------------------------------------------------------

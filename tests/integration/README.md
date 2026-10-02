@@ -31,11 +31,12 @@ The stack check needs the Supabase URL and `APP_URL` to accept a TCP connection 
 ## Files
 
 - `helpers.ts`: env loading, the stack check and skip reason, `newCitizen()` (a fresh anonymous
-  session), `uploadPhoto()` (a hard-coded 1×1 JPEG at `{uid}/{uuid}.jpg`), `api()`,
+  session), `uploadPhoto()` (a hard-coded 1×1 JPEG at `{uid}/{uuid}.jpg`), `expectPhoto()`
+  (GETs a `/api/photos/...` path and checks the JPEG bytes and cache header), `api()`,
   `adminClient()`, and envelope assertions validated against `src/contracts`.
 - `register.ts`: a resolve hook (`node --import`) that lets Node's type stripping load the
   extensionless imports inside `src/contracts`.
-- `reports.test.ts`: create → detail / map / My Reports, validation and auth errors, and the per-user rate limit.
+- `reports.test.ts`: create → detail / map / My Reports / photo route, validation and auth errors, and the per-user rate limit.
 - `rls.test.ts`: direct Supabase access as an anonymous citizen: table writes, reads, RPCs and Storage.
 - `ip-limit.test.ts`: the per-IP rate limit (opt-in).
 

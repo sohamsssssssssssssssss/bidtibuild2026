@@ -1,4 +1,5 @@
--- Read functions (20261002000700_read_functions.sql): map_issues, issue_detail, my_reports.
+-- Read functions: map_issues (20261002000700_read_functions.sql), issue_detail and my_reports
+-- (replaced in 20261002000900_photo_route.sql: photo references, never storage paths).
 -- Own fixtures (does not depend on the seed); one transaction, rolled back.
 begin;
 
@@ -79,13 +80,13 @@ insert into public.issues (id, category, status, geom, assigned_department_id, a
   ('10000000-0000-4000-8000-000000000006', 'POTHOLE',     'REPORTED', 'SRID=4326;POINT(73.50 18.50)', null, null, null, null, null, now());
 
 insert into public.reports (id, issue_id, reporter_user_id, reporter_ip_hash, category, citizen_severity, description, image_path, geom, created_at) values
-  ('30000000-0000-4000-8000-000000000001', '10000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-0000000000c1', 'iphash-secret-1', 'POTHOLE', 'HIGH', 'first pothole report', 'c1/1.jpg', 'SRID=4326;POINT(72.83 19.05)', now() - interval '5 hours'),
-  ('30000000-0000-4000-8000-000000000002', '10000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-0000000000c2', 'iphash-secret-2', 'POTHOLE', null, 'support', 'c2/2.jpg', 'SRID=4326;POINT(72.8301 19.0501)', now() - interval '4 hours 30 minutes'),
-  ('30000000-0000-4000-8000-000000000003', '10000000-0000-4000-8000-000000000002', '00000000-0000-4000-8000-0000000000c2', 'iphash-secret-2', 'GARBAGE', null, 'garbage', 'c2/3.jpg', 'SRID=4326;POINT(72.84 19.06)', now() - interval '4 hours'),
-  ('30000000-0000-4000-8000-000000000004', '10000000-0000-4000-8000-000000000003', '00000000-0000-4000-8000-0000000000c1', 'iphash-secret-1', 'POTHOLE', null, 'rejected one', 'c1/4.jpg', 'SRID=4326;POINT(72.85 19.07)', now() - interval '3 hours'),
-  ('30000000-0000-4000-8000-000000000005', '10000000-0000-4000-8000-000000000004', '00000000-0000-4000-8000-0000000000c3', 'iphash-secret-3', 'DRAINAGE', null, 'drain', 'c3/5.jpg', 'SRID=4326;POINT(72.86 19.08)', now() - interval '2 hours'),
-  ('30000000-0000-4000-8000-000000000006', '10000000-0000-4000-8000-000000000005', '00000000-0000-4000-8000-0000000000c1', 'iphash-secret-1', 'STREETLIGHT', 'LOW', 'light', 'c1/6.jpg', 'SRID=4326;POINT(72.87 19.02)', now() - interval '1 hour'),
-  ('30000000-0000-4000-8000-000000000007', '10000000-0000-4000-8000-000000000006', '00000000-0000-4000-8000-0000000000c2', 'iphash-secret-2', 'POTHOLE', null, 'far', 'c2/7.jpg', 'SRID=4326;POINT(73.50 18.50)', now());
+  ('30000000-0000-4000-8000-000000000001', '10000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-0000000000c1', 'iphash-secret-1', 'POTHOLE', 'HIGH', 'first pothole report', '00000000-0000-4000-8000-0000000000c1/50000000-0000-4000-8000-000000000001.jpg', 'SRID=4326;POINT(72.83 19.05)', now() - interval '5 hours'),
+  ('30000000-0000-4000-8000-000000000002', '10000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-0000000000c2', 'iphash-secret-2', 'POTHOLE', null, 'support', '00000000-0000-4000-8000-0000000000c2/50000000-0000-4000-8000-000000000002.jpg', 'SRID=4326;POINT(72.8301 19.0501)', now() - interval '4 hours 30 minutes'),
+  ('30000000-0000-4000-8000-000000000003', '10000000-0000-4000-8000-000000000002', '00000000-0000-4000-8000-0000000000c2', 'iphash-secret-2', 'GARBAGE', null, 'garbage', '00000000-0000-4000-8000-0000000000c2/50000000-0000-4000-8000-000000000003.jpg', 'SRID=4326;POINT(72.84 19.06)', now() - interval '4 hours'),
+  ('30000000-0000-4000-8000-000000000004', '10000000-0000-4000-8000-000000000003', '00000000-0000-4000-8000-0000000000c1', 'iphash-secret-1', 'POTHOLE', null, 'rejected one', '00000000-0000-4000-8000-0000000000c1/50000000-0000-4000-8000-000000000004.jpg', 'SRID=4326;POINT(72.85 19.07)', now() - interval '3 hours'),
+  ('30000000-0000-4000-8000-000000000005', '10000000-0000-4000-8000-000000000004', '00000000-0000-4000-8000-0000000000c3', 'iphash-secret-3', 'DRAINAGE', null, 'drain', '00000000-0000-4000-8000-0000000000c3/50000000-0000-4000-8000-000000000005.jpg', 'SRID=4326;POINT(72.86 19.08)', now() - interval '2 hours'),
+  ('30000000-0000-4000-8000-000000000006', '10000000-0000-4000-8000-000000000005', '00000000-0000-4000-8000-0000000000c1', 'iphash-secret-1', 'STREETLIGHT', 'LOW', 'light', '00000000-0000-4000-8000-0000000000c1/50000000-0000-4000-8000-000000000006.jpg', 'SRID=4326;POINT(72.87 19.02)', now() - interval '1 hour'),
+  ('30000000-0000-4000-8000-000000000007', '10000000-0000-4000-8000-000000000006', '00000000-0000-4000-8000-0000000000c2', 'iphash-secret-2', 'POTHOLE', null, 'far', '00000000-0000-4000-8000-0000000000c2/50000000-0000-4000-8000-000000000007.jpg', 'SRID=4326;POINT(73.50 18.50)', now());
 
 insert into public.issue_events (id, issue_id, actor_user_id, event_type, from_status, to_status, note, metadata, created_at) values
   ('20000000-0000-4000-8000-000000000001', '10000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-0000000000c1', 'CREATED', null, 'REPORTED', null, '{}', now() - interval '5 hours'),
@@ -96,8 +97,8 @@ insert into public.issue_events (id, issue_id, actor_user_id, event_type, from_s
   ('20000000-0000-4000-8000-000000000005', '10000000-0000-4000-8000-000000000003', '00000000-0000-4000-8000-0000000000a1', 'REJECTED', 'REPORTED', 'REJECTED', 'not a civic issue', '{}', now() - interval '2 hours 50 minutes');
 
 insert into public.resolution_evidence (id, issue_id, uploaded_by, image_path, note, created_at) values
-  ('40000000-0000-4000-8000-000000000001', '10000000-0000-4000-8000-000000000005', '00000000-0000-4000-8000-0000000000a1', 'a1/e1.jpg', 'first fix', now() - interval '40 minutes'),
-  ('40000000-0000-4000-8000-000000000002', '10000000-0000-4000-8000-000000000005', '00000000-0000-4000-8000-0000000000a1', 'a1/e2.jpg', 'final fix', now() - interval '30 minutes');
+  ('40000000-0000-4000-8000-000000000001', '10000000-0000-4000-8000-000000000005', '00000000-0000-4000-8000-0000000000a1', '00000000-0000-4000-8000-0000000000a1/60000000-0000-4000-8000-000000000001.jpg', 'first fix', now() - interval '40 minutes'),
+  ('40000000-0000-4000-8000-000000000002', '10000000-0000-4000-8000-000000000005', '00000000-0000-4000-8000-0000000000a1', '00000000-0000-4000-8000-0000000000a1/60000000-0000-4000-8000-000000000002.jpg', 'final fix', now() - interval '30 minutes');
 
 -- my_reports before the merge: C3's report is on I4 -------------------------------------------------
 select pg_temp.assert_eq('C3 report issue before merge',
@@ -140,7 +141,9 @@ do $$ declare m record; begin
 end $$;
 
 -- issue_detail ----------------------------------------------------------------------------------
--- No reporter ids, ip hashes, actor ids, uploader ids or event metadata anywhere in the output.
+-- No reporter ids, ip hashes, actor ids, uploader ids or event metadata anywhere in the output, and
+-- no storage paths: the fixture paths are {uid}/{uuid}.jpg (02 §10.2), so a path or Storage URL
+-- would leak the uploader's uid. Photos are referenced by report / evidence id only.
 create function pg_temp.assert_sanitised(p_label text, p_doc jsonb)
 returns void language plpgsql as $$
 declare s text := p_doc::text; secret text;
@@ -148,7 +151,8 @@ begin
   foreach secret in array array[
     '00000000-0000-4000-8000-0000000000a1', '00000000-0000-4000-8000-0000000000c1',
     '00000000-0000-4000-8000-0000000000c2', '00000000-0000-4000-8000-0000000000c3',
-    'iphash-secret', 'reporter', 'metadata', 'uploaded_by', 'actor_user_id'
+    'iphash-secret', 'reporter', 'metadata', 'uploaded_by', 'actor_user_id',
+    'image_path', '.jpg', 'report-photos', 'resolution-photos', 'storage'
   ] loop
     if position(secret in s) > 0 then raise exception '%: output leaks "%": %', p_label, secret, s; end if;
   end loop;
@@ -167,10 +171,11 @@ do $$ declare d jsonb; begin
   perform pg_temp.assert_eq('I1 photos order (primary first)',
     (select array_agg(p ->> 'id' order by o) from jsonb_array_elements(d -> 'photos') with ordinality as t(p, o)),
     array['30000000-0000-4000-8000-000000000001', '30000000-0000-4000-8000-000000000002', '30000000-0000-4000-8000-000000000005']);
-  perform pg_temp.assert_eq('I1 primary photo path', d -> 'photos' -> 0 ->> 'image_path', 'c1/1.jpg');
+  perform pg_temp.assert_eq('I1 every photo referenced',
+    (select bool_and((p ->> 'has_photo')::boolean) from jsonb_array_elements(d -> 'photos') p), true);
   perform pg_temp.assert_eq('I1 primary photo keys',
     (select array_agg(k order by k) from jsonb_object_keys(d -> 'photos' -> 0) k),
-    array['category', 'citizen_severity', 'created_at', 'description', 'id', 'image_path']);
+    array['category', 'citizen_severity', 'created_at', 'description', 'has_photo', 'id']);
   perform pg_temp.assert_eq('I1 timeline actors',
     (select array_agg(e ->> 'actor' order by o) from jsonb_array_elements(d -> 'timeline') with ordinality as t(e, o)),
     array['CITIZEN', 'AUTHORITY', 'SYSTEM']);
@@ -191,8 +196,11 @@ do $$ declare d jsonb; begin
   d := public.issue_detail('10000000-0000-4000-8000-000000000005', null);
   perform pg_temp.assert_sanitised('I5 detail', d);
   perform pg_temp.assert_eq('I5 evidence (oldest first)',
-    (select array_agg(e ->> 'image_path' order by o) from jsonb_array_elements(d -> 'resolution_evidence') with ordinality as t(e, o)),
-    array['a1/e1.jpg', 'a1/e2.jpg']);
+    (select array_agg((e ->> 'id') || '/' || (e ->> 'has_photo') order by o) from jsonb_array_elements(d -> 'resolution_evidence') with ordinality as t(e, o)),
+    array['40000000-0000-4000-8000-000000000001/true', '40000000-0000-4000-8000-000000000002/true']);
+  perform pg_temp.assert_eq('I5 evidence keys',
+    (select array_agg(k order by k) from jsonb_object_keys(d -> 'resolution_evidence' -> 0) k),
+    array['created_at', 'has_photo', 'id', 'note']);
 
   d := public.issue_detail('10000000-0000-4000-8000-000000000004', null);
   perform pg_temp.assert_eq('merged I4 status', d ->> 'status', 'MERGED');
@@ -203,7 +211,8 @@ do $$ declare d jsonb; begin
   perform pg_temp.assert_eq('missing issue', public.issue_detail('10000000-0000-4000-8000-0000000000ff', null), null::jsonb);
 end $$;
 
--- REJECTED visibility mirrors the issues RLS policy; photos are always hidden.
+-- REJECTED visibility mirrors the issues RLS policy; whoever may see the issue may see its photos
+-- (photo_object applies the same rule, 075_photos.sql).
 do $$ declare d jsonb; begin
   perform pg_temp.assert_eq('rejected, anonymous viewer', public.issue_detail('10000000-0000-4000-8000-000000000003', null), null::jsonb);
   perform pg_temp.assert_eq('rejected, unrelated citizen',
@@ -212,14 +221,15 @@ do $$ declare d jsonb; begin
   d := public.issue_detail('10000000-0000-4000-8000-000000000003', '00000000-0000-4000-8000-0000000000c1');
   if d is null then raise exception 'rejected issue hidden from its reporter'; end if;
   perform pg_temp.assert_sanitised('rejected, reporter', d);
-  perform pg_temp.assert_eq('rejected, reporter: photo path hidden', d -> 'photos' -> 0 -> 'image_path', 'null'::jsonb);
+  perform pg_temp.assert_eq('rejected, reporter: photo referenced', d -> 'photos' -> 0 -> 'has_photo', 'true'::jsonb);
   perform pg_temp.assert_eq('rejected, reporter: description kept', d -> 'photos' -> 0 ->> 'description', 'rejected one');
   perform pg_temp.assert_eq('rejected timeline', (d -> 'timeline' -> 1 ->> 'actor') || '/' || (d -> 'timeline' -> 1 ->> 'note'),
     'AUTHORITY/not a civic issue');
 
   d := public.issue_detail('10000000-0000-4000-8000-000000000003', '00000000-0000-4000-8000-0000000000a1');
   if d is null then raise exception 'rejected issue hidden from authority'; end if;
-  perform pg_temp.assert_eq('rejected, authority: photo path hidden', d -> 'photos' -> 0 -> 'image_path', 'null'::jsonb);
+  perform pg_temp.assert_sanitised('rejected, authority', d);
+  perform pg_temp.assert_eq('rejected, authority: photo referenced', d -> 'photos' -> 0 -> 'has_photo', 'true'::jsonb);
 end $$;
 
 -- my_reports ------------------------------------------------------------------------------------
@@ -231,23 +241,27 @@ do $$ declare d jsonb; begin
     array['30000000-0000-4000-8000-000000000006', '30000000-0000-4000-8000-000000000004', '30000000-0000-4000-8000-000000000001']);
   perform pg_temp.assert_eq('C1 report keys',
     (select array_agg(k order by k) from jsonb_object_keys(d -> 0) k),
-    array['category', 'citizen_severity', 'created_at', 'description', 'id', 'image_path', 'issue', 'lat', 'lng']);
+    array['category', 'citizen_severity', 'created_at', 'description', 'has_photo', 'id', 'issue', 'lat', 'lng']);
   perform pg_temp.assert_eq('C1 issue keys',
     (select array_agg(k order by k) from jsonb_object_keys(d -> 0 -> 'issue') k),
     array['category', 'final_priority', 'id', 'latest_resolution_evidence', 'report_count', 'resolved_at', 'status', 'updated_at']);
   -- resolved issue: latest evidence
   perform pg_temp.assert_eq('C1 resolved issue status', d -> 0 -> 'issue' ->> 'status', 'RESOLVED');
-  perform pg_temp.assert_eq('C1 latest evidence', d -> 0 -> 'issue' -> 'latest_resolution_evidence' ->> 'image_path', 'a1/e2.jpg');
-  perform pg_temp.assert_eq('C1 own photo', d -> 0 ->> 'image_path', 'c1/6.jpg');
-  -- rejected issue: photo hidden
+  perform pg_temp.assert_eq('C1 latest evidence',
+    d -> 0 -> 'issue' -> 'latest_resolution_evidence',
+    jsonb_build_object('id', '40000000-0000-4000-8000-000000000002', 'has_photo', true, 'note', 'final fix',
+                       'created_at', d -> 0 -> 'issue' -> 'latest_resolution_evidence' -> 'created_at'));
+  perform pg_temp.assert_eq('C1 own photo', d -> 0 -> 'has_photo', 'true'::jsonb);
+  -- rejected issue: the reporter still sees its own photo (photo_object serves it to them)
   perform pg_temp.assert_eq('C1 rejected status', d -> 1 -> 'issue' ->> 'status', 'REJECTED');
-  perform pg_temp.assert_eq('C1 rejected photo hidden', d -> 1 -> 'image_path', 'null'::jsonb);
+  perform pg_temp.assert_eq('C1 rejected own photo', d -> 1 -> 'has_photo', 'true'::jsonb);
   -- open issue with 3 reports, no evidence
   perform pg_temp.assert_eq('C1 I1 report_count', (d -> 2 -> 'issue' ->> 'report_count')::int, 3);
   perform pg_temp.assert_eq('C1 I1 no evidence', d -> 2 -> 'issue' -> 'latest_resolution_evidence', 'null'::jsonb);
   perform pg_temp.assert_eq('C1 report lat', (d -> 2 ->> 'lat')::numeric, 19.05);
 
   d := public.my_reports('00000000-0000-4000-8000-0000000000c2');
+  perform pg_temp.assert_sanitised('C2 my_reports', d);
   perform pg_temp.assert_eq('C2 only own reports',
     (select array_agg(r ->> 'id' order by r ->> 'id') from jsonb_array_elements(d) r),
     array['30000000-0000-4000-8000-000000000002', '30000000-0000-4000-8000-000000000003', '30000000-0000-4000-8000-000000000007']);

@@ -240,8 +240,8 @@ Every mutation follows one path:
 - The only direct client write is the photo upload (§10).
 
 ### 7.4 Reads
-- Map, detail, queue and My Reports go through API routes.
-- Public responses never include `reporter_user_id`, `reporter_ip_hash` or citizen actor ids.
+- Map, detail, queue, My Reports and photos go through API routes.
+- Public responses never include `reporter_user_id`, `reporter_ip_hash` or citizen actor ids. They also never include storage paths or Storage URLs, which embed the uploader's uid (§10.2).
 - Realtime reads `issues` directly under RLS (`04` §4).
 - The service-role key is server-only and never appears in a `NEXT_PUBLIC_*` variable.
 
@@ -273,16 +273,18 @@ Details:
 ### 10.2 Buckets
 | Bucket | Insert | Read | `allowed_mime_types` | `file_size_limit` |
 |---|---|---|---|---|
-| `report-photos` | authenticated; path must start with `{auth.uid()}/` | public | `image/jpeg` | 2 MB |
-| `resolution-photos` | authority only | public | `image/jpeg` | 2 MB |
+| `report-photos` | authenticated; path must start with `{auth.uid()}/` | private: uploader's own folder only; everyone else via `GET /api/photos/report/:report_id` | `image/jpeg` | 2 MB |
+| `resolution-photos` | authority only, own folder | private: uploader's own folder only; everyone else via `GET /api/photos/evidence/:evidence_id` | `image/jpeg` | 2 MB |
 
 - Object path: `{uid}/{uuid}.jpg`.
 - The API route checks that a submitted `image_path` starts with the caller's uid; `create_report` re-checks the prefix and that the object exists in storage.
+- Because the path embeds the uploader's uid, responses never contain a storage path or Storage URL (§7.4). `image_url` is the same-origin photo route `/api/photos/{report|evidence}/{id}`. The route resolves the object with `photo_object` (`04` §3), downloads it with the service role and streams it as `image/jpeg` with `Cache-Control: public, max-age=300, s-maxage=300` (`private, no-store` for a REJECTED issue's photo, which only some viewers may see).
+- The only SELECT policies on `storage.objects` are "read own folder" for `authenticated`, so an uploader can read its upload back. A plain upload (`upsert: false`) needs only INSERT. Upsert would also need SELECT + UPDATE, and there is no UPDATE policy.
 
 ### 10.3 Moderation
-- Public API responses never return image paths for `REJECTED` issues.
-- The objects stay in storage for audit, under unguessable paths.
-- `ponytail:` anyone who already has the URL can still open it. Switch to a private bucket with signed URLs if that matters.
+- Photos of a `REJECTED` issue are served only to an authority or to a viewer with a report on that issue (the same rule as `issue_detail` and the `issues` RLS policy, `04` §4). Everyone else gets 404 from the photo route, and public API responses don't reference them.
+- The photo route enforces this on every request, because the buckets are private. Rejection takes effect for new requests at once. Browser and CDN copies of a previously public photo expire within 5 minutes (`max-age=300`).
+- The objects stay in storage for audit.
 - No face or licence-plate redaction is claimed.
 
 ## 11. Realtime
@@ -297,7 +299,7 @@ Details:
 - The default viewport (`MAP_DEFAULT_VIEW`) and `DEMO_SPOT` live in `civic.ts`.
 
 ## 13. API
-- Every response uses the envelope `{ data: T | null, error: { code: string, message: string } | null }`.
+- Every response uses the envelope `{ data: T | null, error: { code: string, message: string } | null }`. The one exception is a successful `GET /api/photos/:kind/:id`, which returns the JPEG bytes.
 - Every route validates its input with the Zod schemas in `src/contracts/`.
 
 | Route | Who | Input | Does |
@@ -308,6 +310,7 @@ Details:
 | `GET /api/issues` | public | bbox, category[], status[] | Map markers |
 | `GET /api/issues/:id` | public | — | Detail, public photos, sanitised timeline, resolution evidence |
 | `GET /api/my-reports` | citizen | — | Caller's reports, each with its current issue |
+| `GET /api/photos/:kind/:id` | public (viewer-aware) | kind: `report` \| `evidence`; id: report id / evidence id | Streams the photo (`image/jpeg`, not an envelope) via `photo_object`; 404 envelope if unknown or hidden (§10.2–10.3) |
 | `GET /api/departments` | authority | — | Department list for assignment |
 | `GET /api/authority/queue` | authority | status, category, department filters | `authority_queue()` |
 | `PATCH /api/issues/:id/priority` | authority | final_priority?, authority_severity? | Sets either or both |

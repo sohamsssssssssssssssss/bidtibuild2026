@@ -135,7 +135,7 @@ export const myReportSchema = z.object({
   category: categorySchema,
   citizen_severity: levelSchema.nullable(),
   description: z.string(),
-  /** The caller's own photo; null when the issue is REJECTED (02 §10.3). */
+  /** The caller's own photo (photo route path). Reporters still see it when the issue is REJECTED (02 §10.3). */
   image_url: imageUrlSchema,
   lat: latSchema,
   lng: lngSchema,

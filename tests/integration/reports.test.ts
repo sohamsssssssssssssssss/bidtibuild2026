@@ -25,11 +25,13 @@ import {
   photoPath,
   postReport,
   PRIVATE_KEYS,
-  publicPhotoUrl,
+  expectPhoto,
+  photoRoutePath,
   randomFakeIp,
   RATE_LIMITED_MESSAGE,
   reportBody,
   RUN_IP,
+  storagePublicUrl,
   testOptions,
   uploadPhoto,
 } from "./helpers.ts";
@@ -46,7 +48,8 @@ test("create: a citizen's report becomes a public REPORTED issue, in their My Re
     body: { description: `  ${description}  `, citizen_severity: "HIGH" },
   });
   const point = { lat: body.lat, lng: body.lng };
-  const imageUrl = publicPhotoUrl(STORAGE_BUCKETS.reportPhotos, body.image_path);
+  // Photos are served by the app, keyed by report id: the URL never contains the uploader's uid.
+  const imageUrl = photoRoutePath("report", reportId);
 
   // --- GET /api/issues/:id: public, sanitised detail ------------------------------------------
   const detailRes = await api("GET", `/api/issues/${issueId}`, { ip: null });
@@ -68,17 +71,30 @@ test("create: a citizen's report becomes a public REPORTED issue, in their My Re
   assert.equal(created[0]?.to_status, "REPORTED");
   assert.equal(created[0]?.actor, "CITIZEN");
 
-  // Privacy (02 §7.4, 06 rule 22): no reporter id / ip hash / actor id anywhere in the JSON.
-  // image_url is excluded from the uid scan: the mandated object path {uid}/{uuid}.jpg (02 §10.2)
-  // necessarily embeds the uploader's uid in the public photo URL.
-  for (const s of jsonStrings(detailRes.json, ["image_url"])) {
+  // The photo route streams the uploaded JPEG to anyone (the issue is not REJECTED) ...
+  await expectPhoto(imageUrl);
+  // ... while the Storage object itself is private (02 §10.2): no public Storage URL serves it.
+  const direct = await fetch(storagePublicUrl(STORAGE_BUCKETS.reportPhotos, body.image_path), {
+    signal: AbortSignal.timeout(60_000),
+  });
+  await direct.body?.cancel();
+  assert.notEqual(direct.status, 200, "the report photo is still readable through a public Storage URL");
+  // Unknown ids and malformed paths use the JSON error envelope.
+  expectError(await api("GET", photoRoutePath("report", randomUUID()), { ip: null }), 404, "NOT_FOUND");
+  expectError(await api("GET", photoRoutePath("evidence", reportId), { ip: null }), 404, "NOT_FOUND");
+  expectError(await api("GET", "/api/photos/report/not-a-uuid", { ip: null }), 400, "VALIDATION_FAILED");
+  expectError(await api("GET", `/api/photos/avatar/${reportId}`, { ip: null }), 400, "VALIDATION_FAILED");
+
+  // Privacy (02 §7.4, 06 rule 22): no reporter id / ip hash / actor id anywhere in the JSON —
+  // image_url included, since photos are referenced by report id, never by storage path.
+  for (const s of jsonStrings(detailRes.json)) {
     assert.ok(!s.includes(citizen.userId), `issue detail leaks the reporter uid in ${JSON.stringify(s)}`);
     assert.ok(!(PRIVATE_KEYS as readonly string[]).includes(s), `issue detail exposes key ${s}`);
   }
   // Even signed in as the reporter, the public detail stays sanitised.
   const ownDetailRes = await api("GET", `/api/issues/${issueId}`, { token: citizen.accessToken });
   expectOk(ownDetailRes, issueDetailResponseSchema);
-  for (const s of jsonStrings(ownDetailRes.json, ["image_url"])) {
+  for (const s of jsonStrings(ownDetailRes.json)) {
     assert.ok(!s.includes(citizen.userId), `issue detail (as reporter) leaks the reporter uid in ${JSON.stringify(s)}`);
   }
 
@@ -105,9 +121,11 @@ test("create: a citizen's report becomes a public REPORTED issue, in their My Re
   assert.equal(report.issue.report_count, 1);
   assert.equal(report.issue.latest_resolution_evidence, null);
   assert.equal(report.image_url, imageUrl);
+  await expectPhoto(report.image_url, { token: citizen.accessToken });
   assert.equal(report.description, description);
   assert.equal(report.citizen_severity, "HIGH");
   for (const s of jsonStrings(mineRes.json)) {
+    assert.ok(!s.includes(citizen.userId), `my-reports leaks the caller's uid in ${JSON.stringify(s)}`);
     assert.ok(!(PRIVATE_KEYS as readonly string[]).includes(s), `my-reports exposes key ${s}`);
   }
 
