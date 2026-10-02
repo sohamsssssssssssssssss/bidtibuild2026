@@ -1,0 +1,7 @@
+node_modules
+.next
+package-lock.json
+public/maplibre
+supabase
+docs
+src/app/api/
