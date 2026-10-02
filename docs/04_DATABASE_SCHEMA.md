@@ -2,6 +2,8 @@
 **Version:** 0.3
 Numbers live in `02_TECHNICAL_SPEC.md`. The migrations in `supabase/migrations/` are the executable truth; this doc must match them.
 
+PostGIS is installed in the `extensions` schema (Supabase convention), so geometry columns are typed `extensions.geography(...)` in the migrations.
+
 ## 1. Enums
 - `issue_category` — values in `02` §3.1
 - `issue_status` — `REPORTED`, `ASSIGNED`, `IN_PROGRESS`, `RESOLVED`, `REJECTED`, `MERGED`, `REOPENED` (`REOPENED` is used only once the reopen stretch ships)
@@ -44,6 +46,8 @@ Citizens are anonymous auth users and have no row here in the MVP.
 - `updated_at timestamptz not null default now()`
 - `resolved_at timestamptz null`
 
+Trigger `issues_touch_updated_at` sets `updated_at = now()` on every UPDATE.
+
 Checks:
 - `(status = 'MERGED') = (merged_into_issue_id is not null)`
 - `merged_into_issue_id <> id`
@@ -77,7 +81,7 @@ An issue's primary report is its earliest report.
 - `metadata jsonb not null default '{}'`
 - `created_at timestamptz not null default now()`
 
-Trigger `issue_events_append_only`: `BEFORE UPDATE OR DELETE` always raises an exception. It applies to the service role too. Demo reset rebuilds the database (`02` §14) instead of deleting rows.
+Trigger `issue_events_append_only`: `BEFORE UPDATE OR DELETE` always raises an exception. A statement-level `issue_events_no_truncate` trigger does the same for `TRUNCATE` (including `truncate issues cascade`). Both apply to the service role and superusers too. Demo reset rebuilds the database (`02` §14) instead of deleting rows.
 
 ### resolution_evidence
 - `id uuid pk default gen_random_uuid()`
@@ -117,8 +121,9 @@ Trigger `issue_events_append_only`: `BEFORE UPDATE OR DELETE` always raises an e
 
 ## 3. Functions
 Shared rules for every function below:
-- Defined `SECURITY DEFINER` with `set search_path = public`.
-- EXECUTE is granted to `service_role` only.
+- Defined `SECURITY DEFINER` with `set search_path = public, extensions` (PostGIS lives in `extensions`).
+- EXECUTE is granted to `service_role` only. The first migration alters default privileges so that new functions in `public` are not executable by `PUBLIC`, `anon` or `authenticated`; still write `revoke ... from public, anon, authenticated` + `grant execute ... to service_role` explicitly on each function.
+- **Exception:** `is_authority` is also granted to `anon` and `authenticated`, because RLS policies evaluate it as the querying role. It only answers a yes/no question.
 - Each takes `p_actor_id` (already verified by the API route), re-checks authorisation, and writes its `issue_events` rows in the same transaction.
 - Status changes happen **only** here.
 
@@ -137,7 +142,7 @@ Shared rules for every function below:
 | `regenerate_city_pulse(p_config)` | report route via `after()`, regenerate route, reset script | `02` §6 |
 
 ## 4. Row-level security
-RLS is enabled on every table. There are **no INSERT, UPDATE or DELETE policies**; all writes go through §3.
+RLS is enabled on every table. There are **no INSERT, UPDATE or DELETE policies**; all writes go through §3. As a second layer, `anon` and `authenticated` have their INSERT/UPDATE/DELETE/TRUNCATE table privileges revoked (SELECT stays, filtered by RLS).
 
 SELECT policies:
 | Table | Who can read |
