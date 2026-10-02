@@ -62,7 +62,7 @@ Return at most **5** candidates. Each carries: issue id, category, status, dista
 No confidence score is shown or stored, because there is no real model behind one. Text and image similarity are stretch.
 
 ### 3.6 Citizen rule
-Never auto-merge. Show the ranked candidates and let the citizen choose **"This is the same issue"** (adds a supporting report) or **"Create a new issue"**.
+Never auto-merge. Show the ranked candidates and let the citizen choose **"This is the same issue"** (adds a supporting report) or **"Create a new issue"**. A supporting report must have the issue's category or one from the same family (§3.4); if the chosen issue has since been merged, it attaches to the merge target.
 
 ### 3.7 Authority merge
 - The source and target must each have status `REPORTED`, `ASSIGNED` or `IN_PROGRESS`, and must be different issues.
