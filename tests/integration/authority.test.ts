@@ -2,7 +2,10 @@
  * Phase 2 — the authority workflow through the API (02 §4, §5.1, §7.2, §8, §10.3, §13; phase-2
  * contract): access control on every authority route, departments, priority/severity, assign and
  * reassign (SLA), start work, resolve with evidence, the disallowed transitions, rejection
- * (moderation) and the queue (v1).
+ * (moderation) and the queue: open issues, filters and — Phase 4 — the recommended priority
+ * (02 §5: factors, score, label, severity source; sorted by score) including the 02 §5.10
+ * "generic new report" calibration row. The two DEMO_SPOT calibration rows are in the opt-in
+ * demo-spot.test.ts (they write at DEMO_SPOT).
  *
  * Every test except the access-control one acts as the authority account `npm run demo:reset`
  * creates (AUTHORITY_EMAIL / AUTHORITY_PASSWORD); without those variables they are skipped.
@@ -11,8 +14,8 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { test } from "node:test";
-import { LEVELS, PRIORITY_CONFIG, SLA_DEFAULT_HOURS, type Level } from "../../src/config/civic.ts";
-import { authorityQueueResponseSchema, type AuthorityQueueRow } from "../../src/contracts/authority.ts";
+import { PRIORITY_CONFIG, SLA_DEFAULT_HOURS } from "../../src/config/civic.ts";
+import type { AuthorityQueueRow } from "../../src/contracts/authority.ts";
 import { departmentsResponseSchema } from "../../src/contracts/departments.ts";
 import {
   issueDetailResponseSchema,
@@ -31,17 +34,23 @@ import {
   expectError,
   expectOk,
   expectPhoto,
+  expectQueueInputs,
+  expectQueueOrder,
+  expectQueueRecommendation,
   expectTimeline,
   fetchPhoto,
   getIssue,
   getMyReports,
+  getQueue,
   jsonStrings,
+  near,
   newCitizen,
   newIssue,
   photoPath,
   photoRoutePath,
   PRIVATE_KEYS,
   ROADS,
+  SCORE_TOLERANCE,
   SEED_DEPARTMENTS,
   startWork,
   testOptions,
@@ -64,39 +73,6 @@ function setPriority(auth: Authority, issueId: string, body: unknown) {
 
 function patchStatus(auth: Authority, issueId: string, body: unknown) {
   return api("PATCH", `/api/issues/${issueId}/status`, { token: auth.accessToken, body });
-}
-
-async function getQueue(auth: Authority, query = ""): Promise<AuthorityQueueRow[]> {
-  return expectOk(await api("GET", `/api/authority/queue${query}`, { token: auth.accessToken }), authorityQueueResponseSchema);
-}
-
-// ---------------------------------------------------------------------------
-// Queue v1 (Phase 2). Phase 4 fills factors / score / label / recurrence_count and sorts by score
-// descending: update ONLY these two helpers then.
-// ---------------------------------------------------------------------------
-
-/** v1: the recommendation fields are present but null. */
-function expectQueueRecommendation(row: AuthorityQueueRow): void {
-  assert.equal(row.factors, null, `queue v1: factors must be null (${row.id})`);
-  assert.equal(row.score, null, `queue v1: score must be null (${row.id})`);
-  assert.equal(row.label, null, `queue v1: label must be null (${row.id})`);
-  assert.equal(row.recurrence_count, null, `queue v1: recurrence_count must be null (${row.id})`);
-}
-
-/** v1 order: final priority CRITICAL, HIGH, MEDIUM, LOW, then none; then oldest first. */
-function expectQueueOrder(rows: readonly AuthorityQueueRow[]): void {
-  const rank = (p: Level | null) => (p === null ? LEVELS.length : LEVELS.length - 1 - LEVELS.indexOf(p));
-  for (let i = 1; i < rows.length; i++) {
-    const a = rows[i - 1]!;
-    const b = rows[i]!;
-    const ok =
-      rank(a.final_priority) < rank(b.final_priority) ||
-      (rank(a.final_priority) === rank(b.final_priority) && Date.parse(a.created_at) <= Date.parse(b.created_at));
-    assert.ok(
-      ok,
-      `queue out of order at ${i}: ${a.final_priority}/${a.created_at} before ${b.final_priority}/${b.created_at}`,
-    );
-  }
 }
 
 // ---------------------------------------------------------------------------
@@ -379,7 +355,29 @@ test(
   },
 );
 
-test("queue: open issues only, filters, v1 order (final priority, then oldest)", authorityTestOptions(), async () => {
+/**
+ * The recommendation expected for a fresh issue at a random test point (02 §5): one reporter,
+ * age ≈ 0, outside every seeded risk zone (randomMumbaiPoint is north of 19.09°N; the seeded zones
+ * are all south of 19.03°N), no resolved neighbour.
+ */
+function expectFreshRow(row: AuthorityQueueRow, severity: keyof typeof PRIORITY_CONFIG.severity_values) {
+  const c = PRIORITY_CONFIG;
+  expectQueueRecommendation(row);
+  assert.equal(row.distinct_reporter_count, 1);
+  assert.equal(row.recurrence_count, 0, "a resolved issue of the same category sits within the radius of a random point");
+  assert.equal(row.factors.severity, c.severity_values[severity]);
+  near(row.factors.support, c.support_multiplier, 0.005, "support with one reporter");
+  near(row.factors.age, 0, 0.1, "age of a fresh issue");
+  assert.equal(row.factors.location_risk, c.default_location_risk, "a random test point is inside a risk zone");
+  assert.equal(row.factors.recurrence, 0);
+  const expected =
+    c.weights.severity * c.severity_values[severity] +
+    c.weights.support * c.support_multiplier +
+    c.weights.location_risk * c.default_location_risk;
+  near(row.score, expected, SCORE_TOLERANCE, `score of a fresh ${severity} issue`);
+}
+
+test("queue: open issues only, recommended priority on every row, sorted by score; filters", authorityTestOptions(), async () => {
   const auth = await authority();
   const { issueId } = await newIssue({ body: { citizen_severity: "LOW" } });
 
@@ -390,6 +388,7 @@ test("queue: open issues only, filters, v1 order (final priority, then oldest)",
     expectQueueRecommendation(row);
   }
   expectQueueOrder(all);
+  await expectQueueInputs(all);
   const { data: closed, error } = await adminClient()
     .from("issues")
     .select("id")
@@ -399,7 +398,7 @@ test("queue: open issues only, filters, v1 order (final priority, then oldest)",
   assert.ok((closed ?? []).length > 0, "precondition: the seed has closed issues");
   for (const c of closed as { id: string }[]) assert.ok(!all.some((r) => r.id === c.id), `closed issue ${c.id} in the queue`);
 
-  // --- The fresh issue's row -------------------------------------------------------------------------
+  // --- The fresh issue's row: citizen LOW → 0.35×25 + 0.20×25 + 0.20×25 = 18.75, LOW ---------------
   let row = all.find((r) => r.id === issueId);
   assert.ok(row, "the new issue is missing from the queue");
   assert.equal(row.status, "REPORTED");
@@ -408,20 +407,24 @@ test("queue: open issues only, filters, v1 order (final priority, then oldest)",
   assert.equal(row.effective_severity, "LOW");
   assert.equal(row.severity_source, "CITIZEN");
   assert.equal(row.report_count, 1);
-  assert.equal(row.distinct_reporter_count, 1);
   assert.equal(row.department, null);
   assert.equal(row.sla_due_at, null);
   assert.equal(row.is_seed, false);
+  expectFreshRow(row, "LOW");
+  near(row.score!, 18.75, SCORE_TOLERANCE, "score");
+  assert.equal(row.label, "LOW");
 
   // --- Filters ---------------------------------------------------------------------------------------
   const has = (rows: AuthorityQueueRow[]) => rows.some((r) => r.id === issueId);
   const reported = await getQueue(auth, "?status=REPORTED");
   assert.ok(has(reported) && reported.every((r) => r.status === "REPORTED"));
+  expectQueueOrder(reported);
   const assignedOnly = await getQueue(auth, "?status=ASSIGNED");
   assert.ok(!has(assignedOnly) && assignedOnly.every((r) => r.status === "ASSIGNED"));
   assert.ok(has(await getQueue(auth, "?status=ASSIGNED,REPORTED")));
   const other = await getQueue(auth, "?category=OTHER");
   assert.ok(has(other) && other.every((r) => r.category === "OTHER"));
+  expectQueueOrder(other);
   assert.ok(!has(await getQueue(auth, "?category=POTHOLE&category=GARBAGE")));
   let unassigned = await getQueue(auth, "?department_id=unassigned");
   assert.ok(has(unassigned) && unassigned.every((r) => r.department === null));
@@ -429,7 +432,7 @@ test("queue: open issues only, filters, v1 order (final priority, then oldest)",
   expectError(await api("GET", "/api/authority/queue?status=RESOLVED", { token: auth.accessToken }), 400, "VALIDATION_FAILED");
   expectError(await api("GET", "/api/authority/queue?department_id=roads", { token: auth.accessToken }), 400, "VALIDATION_FAILED");
 
-  // --- After assigning to Roads + CRITICAL priority + authority severity ----------------------------
+  // --- After assigning to Roads + CRITICAL final priority + authority severity HIGH ------------------
   await assignIssue(auth, issueId, ROADS.id);
   expectOk(
     await setPriority(auth, issueId, { final_priority: "CRITICAL", authority_severity: "HIGH" }),
@@ -439,18 +442,44 @@ test("queue: open issues only, filters, v1 order (final priority, then oldest)",
   row = roads.find((r) => r.id === issueId);
   assert.ok(row, "the issue is missing from its department's queue");
   assert.ok(roads.every((r) => r.department?.id === ROADS.id));
+  expectQueueOrder(roads);
   assert.equal(row.status, "ASSIGNED");
   assert.deepEqual(row.department, { id: ROADS.id, name: ROADS.name });
   assert.ok(row.sla_due_at !== null);
   assert.equal(row.final_priority, "CRITICAL");
+  // The authority severity now drives the severity factor (§5.4): 0.35×75 + 5 + 5 = 36.25, MEDIUM.
+  // The final priority never feeds the recommendation (§5.1), so CRITICAL changes nothing here.
   assert.equal(row.effective_severity, "HIGH");
   assert.equal(row.severity_source, "AUTHORITY");
+  expectFreshRow(row, "HIGH");
+  near(row.score!, 36.25, SCORE_TOLERANCE, "score");
+  assert.equal(row.label, "MEDIUM");
   unassigned = await getQueue(auth, "?department_id=unassigned");
   assert.ok(!has(unassigned));
 
-  // Ordering with the issue now CRITICAL: it sits among the CRITICAL rows, ahead of everything else.
+  // Ordering is by score only: the issue sits after every higher score, whatever their final priority.
   const after = await getQueue(auth);
   expectQueueOrder(after);
   const at = after.findIndex((r) => r.id === issueId);
-  assert.ok(at >= 0 && after.slice(0, at).every((r) => r.final_priority === "CRITICAL"));
+  assert.ok(at >= 0, "the issue is missing from the queue");
+  const score = after[at]!.score!;
+  assert.ok(after.slice(0, at).every((r) => r.score! >= score));
+  assert.ok(after.slice(at + 1).every((r) => r.score! <= score));
+});
+
+test("calibration (02 §5.10): a generic new report, no severity, outside every zone → 27.50 MEDIUM", authorityTestOptions(), async () => {
+  const auth = await authority();
+  const { issueId } = await newIssue(); // OTHER, citizen_severity null, random point (no zone)
+
+  const row = (await getQueue(auth, "?category=OTHER")).find((r) => r.id === issueId);
+  assert.ok(row, "the new issue is missing from the queue");
+  assert.equal(row.effective_severity, "MEDIUM");
+  assert.equal(row.severity_source, "DEFAULT");
+  expectFreshRow(row, "MEDIUM");
+  // The 02 §5.10 table, literally: severity 50, support 25.0, age 0, risk 25 → 27.50 MEDIUM.
+  near(row.factors!.severity, 50, 0, "severity");
+  near(row.factors!.support, 25, 0.005, "support");
+  near(row.factors!.location_risk, 25, 0, "location_risk");
+  near(row.score!, 27.5, SCORE_TOLERANCE, "score");
+  assert.equal(row.label, "MEDIUM");
 });

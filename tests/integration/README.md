@@ -1,4 +1,9 @@
-# API integration tests (Phases 1–3)
+# API integration tests (Phases 1–4)
+
+> **Unit tests** (no stack needed) live in `tests/unit/` and run with `npm run test:unit`:
+> `priority.test.ts` checks `priorityLabel` boundaries, reproduces the 02 §5.10 calibration rows
+> from `PRIORITY_CONFIG` with a test-only reference implementation of the 02 §5 formula (SQL owns
+> the real math), and checks the status-transition helpers in `src/config/civic.ts`.
 
 These tests call the real API routes and the real local Supabase (02 §15). They need the full
 local stack. If the stack isn't configured or reachable, every test is **skipped** with the
@@ -15,6 +20,8 @@ npm run demo:reset -- --local       # migrations + seed + authority + City Pulse
 npm run dev                         # in another terminal
 npm run test:integration
 RUN_IP_LIMIT_TEST=1 npm run test:integration   # also run the per-IP limit test (opt-in)
+RUN_DEMO_SPOT_TEST=1 npm run test:integration  # also run the DEMO_SPOT gate rehearsal (opt-in)
+npm run demo:reset -- --local                  # REQUIRED after RUN_DEMO_SPOT_TEST, before a real demo
 ```
 
 | Variable | Default | Notes |
@@ -24,6 +31,7 @@ RUN_IP_LIMIT_TEST=1 npm run test:integration   # also run the per-IP limit test 
 | `IP_HASH_SALT` | from `.env.local` | optional for the tests; if set, the stored `reporter_ip_hash` is checked exactly |
 | `AUTHORITY_EMAIL`, `AUTHORITY_PASSWORD` | from `.env.local` / `.env` | the account `demo:reset` created; without them every test that acts as the authority is skipped with that reason (with `INTEGRATION_REQUIRED=1` they fail instead) |
 | `RUN_IP_LIMIT_TEST=1` | off | enables `ip-limit.test.ts` |
+| `RUN_DEMO_SPOT_TEST=1` | off | enables `demo-spot.test.ts` (writes at `DEMO_SPOT`; run `demo:reset` afterwards) |
 | `INTEGRATION_REQUIRED=1` | off | fail instead of skip when the stack is missing |
 
 The stack check needs the Supabase URL and `APP_URL` to accept a TCP connection within 2 s, and
@@ -40,21 +48,37 @@ The stack check needs the Supabase URL and `APP_URL` to accept a TCP connection 
   `uploadResolutionPhoto()` (`resolution-photos/{uid}/{uuid}.jpg`), `newIssue()` (a fresh citizen's
   issue at a random point), `offsetPoint(lat, lng, metersNorth, metersEast)` (WGS84, mm-accurate),
   `getIssue()` / `getMyReports()`, `expectTimeline()`, `SEED_DEPARTMENTS`, and the workflow steps
-  `assignIssue()` / `startWork()` / `resolveIssue()` / `assignStartResolve()`.
+  `assignIssue()` / `startWork()` / `resolveIssue()` / `assignStartResolve()`. Phase 4 additions:
+  `getQueue()`, `expectQueueRecommendation()` (factors present and in 0..100, severity / support /
+  age / recurrence consistent with the row, score = Σ weights × factors ± `SCORE_TOLERANCE` (0.02,
+  factors are rounded), label = `priorityLabel(score)` allowing either side of a threshold within
+  0.01), `expectQueueOrder()` (score desc, then `created_at` asc), `expectQueueInputs()` (service
+  role: severity source follows authority → citizen → default; location risk is the default or a
+  seeded zone's value).
 - `register.ts`: a resolve hook (`node --import`) that lets Node's type stripping load the
   extensionless imports inside `src/contracts`.
 - `reports.test.ts`: create → detail / map / My Reports / photo route, validation and auth errors, and the per-user rate limit.
 - `rls.test.ts`: direct Supabase access as an anonymous citizen: table writes, reads, RPCs and Storage.
 - `ip-limit.test.ts`: the per-IP rate limit (opt-in).
-- `authority.test.ts` (Phase 2): 401/403 on every authority route; the seed's departments;
+- `authority.test.ts` (Phases 2 + 4): 401/403 on every authority route; the seed's departments;
   priority + severity (events only on change), assign / reassign with SLA, start, resolve with
   evidence, the timeline and My Reports; disallowed transitions (409), REOPENED (501); rejection
   (note required, hidden publicly, still visible to the reporter, `private, no-store` photo); the
-  queue (open statuses only, filters, v1 order). The queue-v1 expectations live in
-  `expectQueueRecommendation()` / `expectQueueOrder()` — change those two when Phase 4 lands.
+  queue (open statuses only, filters, the recommendation on every row, sorted by score; a fresh
+  citizen-LOW issue scores 18.75 LOW, and 36.25 MEDIUM once the authority sets severity HIGH —
+  final priority never changes it); and the 02 §5.10 "generic new report" calibration row
+  (27.50 MEDIUM). If recommended priority is ever cut (05 §4), the queue returns to v1 (nulls,
+  final priority then age): change `expectQueueRecommendation()` / `expectQueueOrder()` in helpers.ts.
 - `duplicates.test.ts` (Phase 3): duplicate candidates (radius of the new report's category,
   EXACT vs FAMILY, ranking, photo), supporting reports, support/merge on closed issues, authority
-  merge (moves reports, no chains, My Reports follow), and the judge-demo path (03 §6 steps 2–8).
+  merge (moves reports, no chains, My Reports follow), and the judge-demo path (03 §6 steps 2–8)
+  at a random spot, including the two-reporter breakdown (support ≈ 39.62).
+- `demo-spot.test.ts` (Phase 4 gate, **opt-in** with `RUN_DEMO_SPOT_TEST=1`): the judge demo AT
+  `DEMO_SPOT` with the exact 02 §5.10 numbers — A's pothole (citizen HIGH) shows severity 75,
+  support 25, location risk 80, recurrence 0 → 47.25 HIGH; B (10 m away) gets it as the first
+  candidate and attaches → support ≈ 39.62 → 50.17 HIGH (both ± 0.02 for age drift); then final
+  priority HIGH, Roads, start, resolve, and A sees RESOLVED with the evidence. It first checks
+  that `DEMO_SPOT` is clean (02 §14) and fails with "run `demo:reset`" if not.
 
 ## Things to know
 
@@ -64,6 +88,10 @@ The stack check needs the Supabase URL and `APP_URL` to accept a TCP connection 
   from such a point; `DEMO_SPOT` itself is never used). Category is `OTHER` unless the test is
   about categories (POTHOLE, WATERLOGGING, DRAINAGE). The authority tests also leave assigned,
   resolved, rejected and merged issues. Run `npm run demo:reset -- --local` before rehearsing the demo.
+- **The DEMO_SPOT test is opt-in** because it is the only test that writes at `DEMO_SPOT`: it
+  leaves a RESOLVED pothole there, which counts as recurrence (02 §5.8) for the next pothole and
+  breaks the 47.25 / 50.17 calibration. **Run `npm run demo:reset` (`-- --local` locally) after
+  it**, before a real demo and before running it again.
 - **Each test uses fresh anonymous citizens**, so the per-user limit (5/h) never leaks between tests.
 - **Fake client IPs.** Requests send `x-forwarded-for` with a random 198.18.0.0/15 address,
   one per test process. The route hashes the first entry, so the tests use up the per-IP budget

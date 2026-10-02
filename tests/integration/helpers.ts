@@ -18,11 +18,20 @@ import type { z } from "zod";
 import {
   CITY_PULSE_DEMO_CENTER,
   DEMO_SPOT,
+  PRIORITY_CONFIG,
+  priorityLabel,
   STORAGE_BUCKETS,
   type Category,
   type EventType,
+  type Level,
+  type SeveritySource,
   type StorageBucket,
 } from "../../src/config/civic.ts";
+import {
+  authorityQueueResponseSchema,
+  type AuthorityQueueRow,
+  type PriorityFactors,
+} from "../../src/contracts/authority.ts";
 import { apiEnvelopeSchema, apiErrorSchema, type ErrorCode } from "../../src/contracts/envelope.ts";
 import {
   assignIssueResponseSchema,
@@ -677,4 +686,135 @@ export async function assignStartResolve(
   await assignIssue(auth, issueId, departmentId);
   await startWork(auth, issueId);
   return resolveIssue(auth, issueId);
+}
+
+// ---------------------------------------------------------------------------
+// Authority queue (Phase 4: recommended priority, 02 §5)
+// ---------------------------------------------------------------------------
+
+/**
+ * Factors come back rounded to 2 decimals and the score is computed in SQL from the UNROUNDED
+ * factors, so Σ weights × (rounded factors) can differ from `score` by up to ~0.01. ±0.02 also
+ * covers age drift between the SQL `now()` and the assertion.
+ */
+export const SCORE_TOLERANCE = 0.02;
+/** A factor recomputed here from the row's own inputs (support, recurrence) vs the rounded value. */
+const FACTOR_TOLERANCE = 0.01;
+/** Age is recomputed from `created_at` and this machine's clock: allow ~30 min of skew / latency. */
+const AGE_TOLERANCE = (0.5 / PRIORITY_CONFIG.age_full_hours) * PRIORITY_CONFIG.factor_max;
+
+/** GET /api/authority/queue as the authority, asserting 200 + the contract. */
+export async function getQueue(auth: Authority, query = ""): Promise<AuthorityQueueRow[]> {
+  return expectOk(await api("GET", `/api/authority/queue${query}`, { token: auth.accessToken }), authorityQueueResponseSchema);
+}
+
+/** Σ weights × factors (02 §5.9) from the row's (rounded) factors. */
+export function weightedScore(f: PriorityFactors): number {
+  const w = PRIORITY_CONFIG.weights;
+  return (
+    w.severity * f.severity +
+    w.support * f.support +
+    w.age * f.age +
+    w.location_risk * f.location_risk +
+    w.recurrence * f.recurrence
+  );
+}
+
+export function near(actual: number, expected: number, tolerance: number, what: string): void {
+  assert.ok(
+    Math.abs(actual - expected) <= tolerance + 1e-9,
+    `${what}: ${actual}, expected ${expected} ± ${tolerance}`,
+  );
+}
+
+/**
+ * Phase 4: the recommendation is always present and self-consistent (02 §5.4–§5.9):
+ * every factor in 0..factor_max; severity = severity_values[effective_severity]; support and
+ * recurrence follow from distinct_reporter_count / recurrence_count; age from created_at;
+ * score = Σ weights × factors; label = priorityLabel(score) (either side of a threshold within
+ * rounding). Call it right after the GET (the age check uses this machine's clock).
+ */
+export function expectQueueRecommendation(row: AuthorityQueueRow): asserts row is AuthorityQueueRow & {
+  factors: PriorityFactors;
+  score: number;
+  label: Level;
+  recurrence_count: number;
+} {
+  const c = PRIORITY_CONFIG;
+  const id = `(${row.id})`;
+  assert.ok(row.factors !== null, `factors must be present ${id}`);
+  assert.ok(row.score !== null, `score must be present ${id}`);
+  assert.ok(row.label !== null, `label must be present ${id}`);
+  assert.ok(row.recurrence_count !== null && Number.isInteger(row.recurrence_count), `recurrence_count must be an integer ${id}`);
+  const f = row.factors;
+  for (const [k, v] of Object.entries(f)) {
+    assert.ok(Number.isFinite(v) && v >= 0 && v <= c.factor_max, `factor ${k} = ${v} outside 0..${c.factor_max} ${id}`);
+  }
+
+  // §5.4 severity: from the effective severity; DEFAULT only ever means default_severity.
+  assert.equal(f.severity, c.severity_values[row.effective_severity], `severity factor vs ${row.effective_severity} ${id}`);
+  if (row.severity_source === "DEFAULT") assert.equal(row.effective_severity, c.default_severity, `DEFAULT severity ${id}`);
+  // §5.5 support from distinct reporters (≥ 1 for any issue with a report).
+  near(f.support, Math.min(c.factor_max, c.support_multiplier * Math.log2(1 + row.distinct_reporter_count)), FACTOR_TOLERANCE, `support ${id}`);
+  // §5.6 age from created_at.
+  const hours = (Date.now() - Date.parse(row.created_at)) / 3_600_000;
+  near(f.age, Math.min(c.factor_max, Math.max(0, (hours / c.age_full_hours) * c.factor_max)), AGE_TOLERANCE, `age ${id}`);
+  // §5.8 recurrence from recurrence_count.
+  near(f.recurrence, Math.min(c.factor_max, c.recurrence_points_per_issue * row.recurrence_count), FACTOR_TOLERANCE, `recurrence ${id}`);
+
+  // §5.9 score and label.
+  near(row.score, weightedScore(f), SCORE_TOLERANCE, `score vs Σ weights × factors ${id}`);
+  const labels = new Set([priorityLabel(row.score - 0.01), priorityLabel(row.score), priorityLabel(row.score + 0.01)]);
+  assert.ok(labels.has(row.label), `label ${row.label} for score ${row.score} ${id}`);
+}
+
+/**
+ * Phase 4 order (phase-4 contract): the returned (rounded) score descending, then created_at
+ * ascending (then id).
+ */
+export function expectQueueOrder(rows: readonly AuthorityQueueRow[]): void {
+  for (let i = 1; i < rows.length; i++) {
+    const a = rows[i - 1]!;
+    const b = rows[i]!;
+    assert.ok(a.score !== null && b.score !== null, "queue rows without a score");
+    const shown = `${a.id} ${a.score}/${a.created_at} before ${b.id} ${b.score}/${b.created_at}`;
+    assert.ok(a.score >= b.score, `queue not sorted by score at ${i}: ${shown}`);
+    if (a.score === b.score) {
+      assert.ok(Date.parse(a.created_at) <= Date.parse(b.created_at), `equal scores not oldest first at ${i}: ${shown}`);
+    }
+  }
+}
+
+/**
+ * Checks the rows against the database (service role): severity_source / effective_severity
+ * follow authority → citizen → default (02 §5.4), and location_risk is the default or a seeded
+ * zone's risk_value (§5.7).
+ */
+export async function expectQueueInputs(rows: readonly AuthorityQueueRow[]): Promise<void> {
+  const { data: zones, error: zoneError } = await adminClient().from("risk_zones").select("risk_value");
+  if (zoneError) throw new Error(`risk_zones lookup failed: ${zoneError.message}`);
+  const riskValues = new Set<number>([PRIORITY_CONFIG.default_location_risk, ...(zones as { risk_value: number }[]).map((z) => z.risk_value)]);
+
+  const severities = new Map<string, { authority_severity: Level | null; citizen_severity: Level | null }>();
+  for (let i = 0; i < rows.length; i += 100) {
+    const ids = rows.slice(i, i + 100).map((r) => r.id);
+    const { data, error } = await adminClient().from("issues").select("id, authority_severity, citizen_severity").in("id", ids);
+    if (error) throw new Error(`issues lookup failed: ${error.message}`);
+    for (const r of data as { id: string; authority_severity: Level | null; citizen_severity: Level | null }[]) {
+      severities.set(r.id, r);
+    }
+  }
+
+  for (const row of rows) {
+    const s = severities.get(row.id);
+    assert.ok(s, `queue row ${row.id} is not in issues`);
+    const [level, source]: [Level, SeveritySource] = s.authority_severity
+      ? [s.authority_severity, "AUTHORITY"]
+      : s.citizen_severity
+        ? [s.citizen_severity, "CITIZEN"]
+        : [PRIORITY_CONFIG.default_severity, "DEFAULT"];
+    assert.equal(row.severity_source, source, `severity_source of ${row.id}`);
+    assert.equal(row.effective_severity, level, `effective_severity of ${row.id}`);
+    assert.ok(row.factors && riskValues.has(row.factors.location_risk), `location_risk ${row.factors?.location_risk} of ${row.id} is no zone's value`);
+  }
 }

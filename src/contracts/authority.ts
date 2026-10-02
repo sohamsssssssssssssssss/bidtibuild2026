@@ -68,10 +68,16 @@ export type PriorityFactors = z.infer<typeof priorityFactorsSchema>;
 /**
  * One row per open issue.
  *
- * Phase 2 ("queue v1", sorted by final priority then age) returns
- * `factors`, `score`, `label` and `recurrence_count` as **null**; Phase 4
- * fills them and sorts by score descending. The keys are always present.
- * `label` is `priorityLabel(score)` (02 §5.9); it is a recommendation only.
+ * Phase 4 (recommended priority, 02 §5): `factors`, `score`, `label` and
+ * `recurrence_count` are always filled, computed at read time; factors and
+ * score are rounded to 2 decimals (score from the unrounded factors), and
+ * rows are sorted by score descending, then `created_at` ascending, then id.
+ * `label` is `priorityLabel(score)` (02 §5.9); it is a recommendation only and
+ * never becomes `final_priority`.
+ *
+ * The four fields stay nullable on purpose: if recommended priority is cut
+ * (05 §4), the queue falls back to v1 (Phase 2: sorted by final priority, then
+ * age), which returns them as **null**. The keys are always present.
  */
 export const authorityQueueRowSchema = z.object({
   id: uuidSchema,

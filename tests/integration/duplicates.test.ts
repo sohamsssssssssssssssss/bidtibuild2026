@@ -1,7 +1,7 @@
 /**
  * Phase 3 — duplicates, supporting reports and authority merge through the API (02 §3, §4, §9,
- * §13, §15; phase-3 contract), plus the judge-demo path (03 §6 steps 2–8, without the priority
- * breakdown, which is Phase 4).
+ * §13, §15; phase-3 contract), plus the judge-demo path (03 §6 steps 2–8) at a random spot. The
+ * same path AT DEMO_SPOT, with the exact 02 §5.10 numbers, is the opt-in demo-spot.test.ts.
  *
  * Points are random spots in northern Mumbai (randomMumbaiPoint: ≥ 2 km from DEMO_SPOT and the
  * City Pulse scenario) with metre offsets from offsetPoint; DEMO_SPOT itself is never used, so the
@@ -24,7 +24,6 @@ import {
   type CreateReportBodyInput,
   type DuplicateCandidate,
 } from "../../src/contracts/reports.ts";
-import { authorityQueueResponseSchema } from "../../src/contracts/authority.ts";
 import { departmentsResponseSchema } from "../../src/contracts/departments.ts";
 import {
   api,
@@ -37,10 +36,13 @@ import {
   expectError,
   expectOk,
   expectPhoto,
+  expectQueueRecommendation,
   expectTimeline,
   getIssue,
   getMyReports,
+  getQueue,
   jsonStrings,
+  near,
   newCitizen,
   newIssue,
   offsetPoint,
@@ -422,7 +424,7 @@ test("merge: moves every report to the target, no chains, My Reports follow; err
 });
 
 // ---------------------------------------------------------------------------
-// Judge demo (03 §6 steps 2–8, without the recommended-priority breakdown)
+// Judge demo (03 §6 steps 2–8) at a random spot; at DEMO_SPOT see demo-spot.test.ts
 // ---------------------------------------------------------------------------
 
 test("judge demo: A reports, B joins, authority sets HIGH, assigns Roads, starts, resolves; A sees RESOLVED + evidence", authorityTestOptions(), async () => {
@@ -440,14 +442,18 @@ test("judge demo: A reports, B joins, authority sets HIGH, assigns Roads, starts
   const attached = await support(b, a.issueId, bAt, { category: "POTHOLE", citizen_severity: "HIGH" });
   assert.equal(attached.issue_id, a.issueId);
 
-  // 4. Authority opens the issue: two distinct reporters; sets final priority HIGH.
-  const row = expectOk(await api("GET", "/api/authority/queue?category=POTHOLE", { token: auth.accessToken }), authorityQueueResponseSchema).find(
-    (r) => r.id === a.issueId,
-  );
+  // 4. Authority opens the issue: two distinct reporters and the breakdown; sets final priority HIGH.
+  //    (Outside the demo zone the score is 0.35×75 + 0.20×39.62 + 0.20×25 ≈ 39.17, MEDIUM — the
+  //    HIGH label of 02 §5.10 needs DEMO_SPOT's risk zone; demo-spot.test.ts checks that.)
+  const row = (await getQueue(auth, "?category=POTHOLE")).find((r) => r.id === a.issueId);
   assert.ok(row, "the demo issue is missing from the queue");
   assert.equal(row.report_count, 2);
   assert.equal(row.distinct_reporter_count, 2);
   assert.equal(row.effective_severity, "HIGH");
+  assert.equal(row.severity_source, "CITIZEN");
+  expectQueueRecommendation(row);
+  assert.equal(row.factors.severity, 75);
+  near(row.factors.support, 39.62, 0.005, "support with two reporters");
   const prio = expectOk(
     await api("PATCH", `/api/issues/${a.issueId}/priority`, { token: auth.accessToken, body: { final_priority: "HIGH" } }),
     setPriorityResponseSchema,
