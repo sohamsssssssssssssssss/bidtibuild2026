@@ -1,0 +1,13 @@
+docs/
+node_modules/
+.next/
+public/maplibre/
+package-lock.json
+scripts/demo-reset.ts
+src/app/api/
+src/config/
+src/contracts/
+src/lib/api/
+src/lib/supabase/admin.ts
+src/lib/supabase/server.ts
+tsconfig.json
