@@ -86,6 +86,10 @@ docker pull mirror.gcr.io/library/kong:2.8.1 && docker tag mirror.gcr.io/library
 
 ## Demo prep
 
+- Run `npm run demo:check -- --url https://<your-app>` right before presenting (and after any
+  rehearsal). It checks the app, the CRITICAL hotspot and **how many minutes it has left**, that
+  `DEMO_SPOT` is clear, the seed, the photo route, and both sign-ins, and exits non-zero if anything
+  would break the judge script. It reads `.env.local`, so point that at the same Supabase project.
 - Run `npm run demo:reset` **shortly before presenting**. The seeded drainage hotspot only reads
   CRITICAL for about **90 minutes** after a reset, and leftover test data can disturb the demo.
 - The judge script is in [`docs/03_APP_FLOW.md` §6](docs/03_APP_FLOW.md). Use three separate
@@ -105,6 +109,7 @@ docker pull mirror.gcr.io/library/kong:2.8.1 && docker tag mirror.gcr.io/library
 | `npm run db:test` | local Postgres 16 + PostGIS on `localhost:5432` (user/password `postgres`) | every SQL function, RLS, storage policies, seed, City Pulse, TS↔SQL transition agreement, concurrent City Pulse runs |
 | `npm run test:integration` | `supabase start` + `demo:reset --local` + `npm run dev` | the real API end to end, including the judge-demo flow |
 | `npm run test:e2e` | `supabase start` + `demo:reset --local` (+ `npx playwright install chromium` once) | the judge demo (03 §6) through the UI in three browser sessions; the full path skips until the frontend renders |
+| `npm run demo:check` | a running app (any URL) | pre-demo readiness: the judge script's preconditions, with minutes of CRITICAL hotspot left |
 
 - `db:test` rebuilds a throwaway database from the migrations on plain Postgres, using a small
   Supabase stand-in (`scripts/db-test/supabase-shim.sql`). It's quick and needs no Docker.
