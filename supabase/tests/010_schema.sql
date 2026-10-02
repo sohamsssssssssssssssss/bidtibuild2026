@@ -122,6 +122,9 @@ select pg_temp.expect_error($q$delete from public.issue_events$q$, 'P0001', '%ap
 select pg_temp.expect_error($q$truncate public.issue_events$q$, 'P0001', '%append-only%TRUNCATE%');
 select pg_temp.expect_error($q$truncate public.issues cascade$q$, 'P0001', '%append-only%TRUNCATE%');
 
+-- Give service_role full audit-table privileges *inside this rolled-back test* so
+-- these failures prove the triggers still block mutations even if grants change.
+grant select, insert, update, delete, truncate on public.issue_events to service_role;
 set local role service_role;
 select pg_temp.expect_error($q$update public.issue_events set note = 'x'$q$, 'P0001', '%append-only%UPDATE%');
 select pg_temp.expect_error($q$delete from public.issue_events where id = '20000000-0000-4000-8000-000000000001'$q$, 'P0001', '%append-only%DELETE%');
@@ -129,6 +132,7 @@ select pg_temp.expect_error($q$truncate public.issue_events$q$, 'P0001', '%appen
 -- service_role can still append
 insert into public.issue_events (issue_id, event_type, note) values ('10000000-0000-4000-8000-000000000001', 'STATUS_CHANGED', 'by service_role');
 reset role;
+revoke select, insert, update, delete, truncate on public.issue_events from service_role;
 
 do $$ begin
   if (select count(*) from public.issue_events where id = '20000000-0000-4000-8000-000000000001' and note is null) <> 1 then

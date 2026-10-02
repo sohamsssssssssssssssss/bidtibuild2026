@@ -15,10 +15,11 @@ end $$;
 
 grant usage on schema public, extensions, auth, storage to anon, authenticated, service_role;
 
--- Supabase grants table + function privileges on public to the API roles by default;
--- RLS (and explicit revokes in migrations) is what actually restricts them.
-alter default privileges in schema public grant all on tables to anon, authenticated, service_role;
-alter default privileges in schema public grant all on sequences to anon, authenticated, service_role;
+-- Model a hosted project where table/sequence access is opt-in even for service_role.
+-- Keep anon/authenticated defaults so the RLS migration's explicit revokes are exercised.
+-- The forward migration must grant its direct table access explicitly.
+alter default privileges in schema public grant all on tables to anon, authenticated;
+alter default privileges in schema public grant all on sequences to anon, authenticated;
 alter default privileges in schema public grant all on functions to anon, authenticated, service_role;
 
 -- auth ---------------------------------------------------------------------
