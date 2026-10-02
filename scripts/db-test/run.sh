@@ -42,5 +42,12 @@ for t in "$ROOT"/supabase/tests/*.sql; do
     echo "FAIL $(basename "$t")"; sed 's/^/    /' /tmp/db-test-out.$$; status=1
   fi
 done
+
+# 02 §15: the TS transitions (civic.ts STATUS_TRANSITIONS) match SQL (status_transition_rules()).
+if node "$ROOT/scripts/db-test/check-transitions.ts" "$DB_URL" > /tmp/db-test-out.$$ 2>&1; then
+  echo "PASS check-transitions.ts"
+else
+  echo "FAIL check-transitions.ts"; sed 's/^/    /' /tmp/db-test-out.$$; status=1
+fi
 rm -f /tmp/db-test-out.$$
 exit $status
