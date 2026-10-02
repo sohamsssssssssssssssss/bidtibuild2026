@@ -20,12 +20,28 @@ begin
 end $$;
 grant execute on function pg_temp.expect_error(text, text, text) to public;
 
--- assert_ids(label, query, expected ids): the query's id set (as the current role) must equal expected.
+-- Rows that exist before this file's fixtures (the seed, when loaded) are ignored by assert_ids,
+-- so these assertions only see the fixtures below.
+create temp table preexisting_ids as
+            select id from public.users
+  union all select id from public.departments
+  union all select id from public.issues
+  union all select id from public.reports
+  union all select id from public.issue_events
+  union all select id from public.resolution_evidence
+  union all select id from public.risk_zones
+  union all select id from public.hotspots
+  union all select issue_id from public.hotspot_issues;
+grant select on preexisting_ids to public;
+
+-- assert_ids(label, query, expected ids): the query's id set (as the current role), minus
+-- preexisting_ids, must equal expected.
 create function pg_temp.assert_ids(p_label text, p_sql text, p_expected uuid[])
 returns void language plpgsql as $$
 declare got uuid[];
 begin
-  execute format('select coalesce(array_agg(id order by id), ''{}'') from (%s) q', p_sql) into got;
+  execute format('select coalesce(array_agg(id order by id), ''{}'') from (%s) q
+                  where id not in (select p.id from pg_temp.preexisting_ids p)', p_sql) into got;
   if got <> (select coalesce(array_agg(x order by x), '{}') from unnest(p_expected) x) then
     raise exception '%: expected % got %', p_label, p_expected, got;
   end if;
